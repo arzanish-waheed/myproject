@@ -1,28 +1,340 @@
-* {
+/* ─── Theme CSS Variables ─── */
+:root,
+[data-theme="dark"] {
+  --bg-primary:      #060B14;
+  --bg-secondary:    #0A1628;
+  --bg-card:         #0F1928;
+  --bg-surface:      rgba(255,255,255,0.04);
+  --bg-hover:        rgba(255,255,255,0.07);
+  --border-color:    rgba(255,255,255,0.08);
+  --border-teal:     rgba(13,148,136,0.2);
+  --text-primary:    #E2E8F0;
+  --text-secondary:  #94A3B8;
+  --text-muted:      #64748B;
+  --nav-bg:          rgba(6,11,20,0.7);
+  --nav-bg-scrolled: rgba(6,11,20,0.95);
+  --dropdown-bg:     rgba(10,18,32,0.98);
+  --input-bg:        rgba(255,255,255,0.04);
+  --scrollbar-track: #0A1628;
+  --select-bg:       #0F1929;
+  --overlay-bg:      rgba(0,0,0,0.7);
+  --color-scheme:    dark;
+  --card-bg:         rgba(15,25,45,0.8);
+  --shadow-teal:     0 8px 32px rgba(13,148,136,0.2);
+}
+
+[data-theme="light"] {
+  --bg-primary:      #F0F4F8;
+  --bg-secondary:    #E2EAF4;
+  --bg-card:         #FFFFFF;
+  --bg-surface:      rgba(0,0,0,0.03);
+  --bg-hover:        rgba(0,0,0,0.06);
+  --border-color:    rgba(0,0,0,0.1);
+  --border-teal:     rgba(13,148,136,0.3);
+  --text-primary:    #0F172A;
+  --text-secondary:  #475569;
+  --text-muted:      #64748B;
+  --nav-bg:          rgba(240,244,248,0.75);
+  --nav-bg-scrolled: rgba(240,244,248,0.97);
+  --dropdown-bg:     rgba(255,255,255,0.99);
+  --input-bg:        rgba(0,0,0,0.04);
+  --scrollbar-track: #E2EAF4;
+  --select-bg:       #FFFFFF;
+  --overlay-bg:      rgba(0,0,0,0.4);
+  --color-scheme:    light;
+  --card-bg:         rgba(255,255,255,0.9);
+  --shadow-teal:     0 8px 32px rgba(13,148,136,0.15);
+}
+
+/* ─── Base Reset ─── */
+*, *::before, *::after {
   margin: 0;
   padding: 0;
   box-sizing: border-box;
+  /* Only transition layout-safe properties */
+  transition: background-color 0.25s ease, color 0.25s ease, border-color 0.25s ease;
+}
+
+html {
+  scroll-behavior: smooth;
 }
 
 body {
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
-  background: #060B14;
-  color: #E2E8F0;
+  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--bg-primary);
+  color: var(--text-primary);
   overflow-x: hidden;
+  /* Sub-pixel font rendering */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
-::-webkit-scrollbar {
-  width: 6px;
-}
-::-webkit-scrollbar-track {
-  background: #0A1628;
-}
-::-webkit-scrollbar-thumb {
-  background: #0D9488;
+/* ─── Scrollbar ─── */
+::-webkit-scrollbar        { width: 6px; }
+::-webkit-scrollbar-track  { background: var(--scrollbar-track); }
+::-webkit-scrollbar-thumb  {
+  background: linear-gradient(180deg, #0D9488, #0891B2);
   border-radius: 3px;
+  transition: background 0.2s;
 }
+::-webkit-scrollbar-thumb:hover { background: #14B8A6; }
 
 ::selection {
   background: rgba(13,148,136,0.3);
   color: #fff;
+}
+
+select option { background-color: var(--select-bg) !important; color: var(--text-primary) !important; }
+select        { color-scheme: var(--color-scheme); }
+
+/* ─── GPU-Accelerated Keyframes ─── */
+/* Only transform + opacity → compositor thread → no jank on slow CPUs */
+
+@keyframes ds-fadeUp {
+  from { opacity: 0; transform: translate3d(0, 24px, 0); }
+  to   { opacity: 1; transform: translate3d(0, 0, 0);    }
+}
+@keyframes ds-fadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+@keyframes ds-scaleIn {
+  from { opacity: 0; transform: scale3d(0.93, 0.93, 1); }
+  to   { opacity: 1; transform: scale3d(1, 1, 1);       }
+}
+@keyframes ds-float {
+  0%,100% { transform: translate3d(0, 0, 0); }
+  50%     { transform: translate3d(0, -10px, 0); }
+}
+@keyframes ds-pulseDot {
+  0%,100% { opacity: 1; transform: scale(1); }
+  50%     { opacity: 0.4; transform: scale(0.85); }
+}
+@keyframes ds-shimmer {
+  0%   { background-position: -200% center; }
+  100% { background-position:  200% center; }
+}
+@keyframes ds-glowPulse {
+  0%,100% { box-shadow: 0 0 0 0 rgba(13,148,136,0); }
+  50%     { box-shadow: 0 0 22px 4px rgba(13,148,136,0.28); }
+}
+@keyframes ds-slideRight {
+  from { transform: translate3d(-12px, 0, 0); opacity: 0; }
+  to   { transform: translate3d(0, 0, 0);     opacity: 1; }
+}
+@keyframes ds-borderGlow {
+  0%,100% { border-color: rgba(13,148,136,0.15); }
+  50%     { border-color: rgba(13,148,136,0.45); }
+}
+
+/* ─── Animation Utility Classes ─── */
+.ds-fade-up    { animation: ds-fadeUp  0.55s cubic-bezier(0.22,1,0.36,1) both; }
+.ds-fade-in    { animation: ds-fadeIn  0.4s ease both; }
+.ds-scale-in   { animation: ds-scaleIn 0.38s cubic-bezier(0.22,1,0.36,1) both; }
+.ds-float      { animation: ds-float   4.5s ease-in-out infinite; will-change: transform; }
+.ds-glow-pulse { animation: ds-glowPulse 2.8s ease-in-out infinite; }
+.ds-shimmer-bg { animation: ds-shimmer  4s linear infinite; background-size: 200% auto; }
+
+/* Stagger delays */
+.ds-d1 { animation-delay: 0.08s; }
+.ds-d2 { animation-delay: 0.16s; }
+.ds-d3 { animation-delay: 0.24s; }
+.ds-d4 { animation-delay: 0.32s; }
+.ds-d5 { animation-delay: 0.40s; }
+.ds-d6 { animation-delay: 0.48s; }
+
+/* ─── Hover Lift (GPU only, no layout shift) ─── */
+.ds-hover-lift {
+  transition: transform 0.22s cubic-bezier(0.22,1,0.36,1),
+              box-shadow 0.22s ease;
+  will-change: transform;
+}
+.ds-hover-lift:hover  { transform: translate3d(0, -5px, 0); box-shadow: 0 18px 44px rgba(0,0,0,0.28); }
+.ds-hover-lift:active { transform: translate3d(0, -1px, 0); }
+
+/* ─── Glass Card ─── */
+.ds-glass {
+  background:          rgba(15,25,45,0.78);
+  backdrop-filter:     blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border:              1px solid rgba(13,148,136,0.15);
+  border-radius:       18px;
+  transition: border-color 0.25s, box-shadow 0.25s,
+              transform 0.22s cubic-bezier(0.22,1,0.36,1);
+  will-change: transform;
+}
+.ds-glass:hover {
+  border-color: rgba(13,148,136,0.38);
+  box-shadow:   0 24px 56px rgba(0,0,0,0.35),
+                inset 0 1px 0 rgba(255,255,255,0.06);
+  transform:    translate3d(0, -4px, 0);
+}
+
+/* Light-mode glass override */
+[data-theme="light"] .ds-glass {
+  background: rgba(255,255,255,0.88);
+}
+[data-theme="light"] .ds-glass:hover {
+  box-shadow: 0 24px 56px rgba(0,0,0,0.12), 0 0 0 1px rgba(13,148,136,0.2);
+}
+
+/* ─── Gradient Text ─── */
+.ds-gradient-text {
+  background: linear-gradient(135deg, #0D9488 0%, #0891B2 50%, #14B8A6 100%);
+  background-size: 200% auto;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color:  transparent;
+  background-clip:           text;
+  animation: ds-shimmer 5s linear infinite;
+}
+
+/* ─── Primary Button ─── */
+.ds-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background:    linear-gradient(135deg, #0D9488, #0891B2);
+  color:         #fff;
+  border:        none;
+  border-radius: 12px;
+  cursor:        pointer;
+  font-family:   inherit;
+  font-weight:   700;
+  transition:    transform 0.18s cubic-bezier(0.22,1,0.36,1),
+                 box-shadow 0.18s ease;
+  will-change:   transform;
+}
+.ds-btn:hover  { transform: translate3d(0,-2px,0) scale(1.025); box-shadow: 0 14px 38px rgba(13,148,136,0.45); }
+.ds-btn:active { transform: scale(0.97); }
+
+/* ─── Teal Dot Pulse ─── */
+.ds-dot-pulse {
+  width: 8px; height: 8px;
+  border-radius: 50%;
+  background: #0D9488;
+  animation: ds-pulseDot 1.6s ease-in-out infinite;
+  will-change: transform, opacity;
+}
+
+/* ─── Section Divider ─── */
+.ds-divider {
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(13,148,136,0.3), transparent);
+  border: none;
+  margin: 0;
+}
+
+/* ─── Policy Tag ─── */
+.ds-policy-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(13,148,136,0.08);
+  border: 1px solid rgba(13,148,136,0.2);
+  border-radius: 20px;
+  padding: 4px 12px;
+  font-size: 12px;
+  color: #0D9488;
+  font-weight: 600;
+  letter-spacing: 0.3px;
+}
+
+/* ─── Accessibility: Respect reduced-motion ─── */
+/* Slow PCs + vestibular disorder users — zero extra CPU cost */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    animation-duration:       0.01ms !important;
+    animation-iteration-count: 1    !important;
+    transition-duration:      0.01ms !important;
+    scroll-behavior:          auto  !important;
+  }
+  .ds-float, .ds-glow-pulse, .ds-shimmer-bg, .ds-gradient-text { animation: none !important; }
+}
+
+/* ─── Responsive ─── */
+@media (max-width: 768px) {
+  .ds-hide-mobile  { display: none !important; }
+}
+@media (min-width: 769px) {
+  .ds-hide-desktop { display: none !important; }
+}
+
+/* ─── Light Mode Surface & Content Overrides ─── */
+[data-theme="light"] {
+  background-color: var(--bg-primary);
+}
+
+[data-theme="light"] .ds-page-root {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Hardcoded dark cards turn clean glass white in light mode */
+[data-theme="light"] div[style*="background: rgba(15, 25, 45"],
+[data-theme="light"] div[style*="background:rgba(15,25,45"],
+[data-theme="light"] div[style*="background: rgba(15,25,45"],
+[data-theme="light"] div[style*="background: rgba(10, 18, 35"],
+[data-theme="light"] div[style*="background:rgba(10,18,35"],
+[data-theme="light"] div[style*="background: #0F1928"],
+[data-theme="light"] div[style*="background:#0F1928"],
+[data-theme="light"] div[style*="background: #0F1929"],
+[data-theme="light"] div[style*="background:#0F1929"],
+[data-theme="light"] div[style*="background: #0A1628"],
+[data-theme="light"] div[style*="background:#0A1628"] {
+  background: rgba(255, 255, 255, 0.94) !important;
+  border-color: rgba(13, 148, 136, 0.18) !important;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.05) !important;
+  color: #0F172A !important;
+}
+
+/* Hardcoded dark page wrappers turn light */
+[data-theme="light"] div[style*="background: #060B14"],
+[data-theme="light"] div[style*="background:#060B14"],
+[data-theme="light"] div[style*="background: rgb(6, 11, 20)"] {
+  background: var(--bg-primary) !important;
+  color: var(--text-primary) !important;
+}
+
+/* Headings in light mode */
+[data-theme="light"] h1[style*="color: #fff"],
+[data-theme="light"] h1[style*="color:#fff"],
+[data-theme="light"] h2[style*="color: #fff"],
+[data-theme="light"] h2[style*="color:#fff"],
+[data-theme="light"] h3[style*="color: #fff"],
+[data-theme="light"] h3[style*="color:#fff"],
+[data-theme="light"] h4[style*="color: #fff"],
+[data-theme="light"] h4[style*="color:#fff"],
+[data-theme="light"] div[style*="color: #fff"],
+[data-theme="light"] div[style*="color:#fff"] {
+  color: #0F172A !important;
+}
+
+/* Exceptions: elements inside gradient badges or buttons keep white text */
+[data-theme="light"] button[style*="color: #fff"],
+[data-theme="light"] button[style*="color:#fff"],
+[data-theme="light"] .ds-btn,
+[data-theme="light"] div[style*="background: #EF4444"],
+[data-theme="light"] div[style*="background: linear-gradient"] {
+  color: #fff !important;
+}
+
+/* Inputs and selects */
+[data-theme="light"] input:not([type="button"]):not([type="submit"]):not([type="checkbox"]):not([type="radio"]),
+[data-theme="light"] textarea,
+[data-theme="light"] select {
+  background-color: #FFFFFF !important;
+  color: #0F172A !important;
+  border-color: rgba(0, 0, 0, 0.15) !important;
+}
+
+[data-theme="light"] input::placeholder,
+[data-theme="light"] textarea::placeholder {
+  color: #94A3B8 !important;
+}
+
+[data-theme="light"] select option {
+  background-color: #FFFFFF !important;
+  color: #0F172A !important;
 }

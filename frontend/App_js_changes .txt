@@ -1,0 +1,24 @@
+App.js mein ye add karo:
+
+1. Import (upar):
+import SuperAdmin from './pages/SuperAdmin';
+
+2. Routes mein add karo (PrivateRoute ke BAHAR — kyunke ye apna alag login system use karta hai):
+
+<Route path="/superadmin" element={<SuperAdmin />} />
+
+Poora example:
+
+<Routes>
+    <Route path="/home" element={<LandingPage />} />
+    <Route path="/login" element={<Login />} />
+    <Route path="/superadmin" element={<SuperAdmin />} />   {/* ← YE ADD KARO */}
+    <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
+    {/* ... baaki routes same ... */}
+</Routes>
+
+Bas itna — SuperAdmin apna khud ka login check karta hai (localStorage 'superadmin_token'),
+isliye PrivateRoute ki zaroorat nahi.
+
+Access karne ke liye browser mein jao:
+http://localhost:3000/superadmin
