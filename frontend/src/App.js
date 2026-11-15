@@ -13,6 +13,7 @@ import Chat from './pages/Chat';
 import SuperAdmin from './pages/SuperAdmin';
 import Premium from './pages/Premium';
 import PaymentAdmin from './pages/PaymentAdmin';
+import BrightnessWidget from './components/BrightnessWidget';
 
 function PrivateRoute({ children }) {
     const token = localStorage.getItem('token');
@@ -23,6 +24,7 @@ function App() {
     return (
         <ThemeProvider>
             <BrowserRouter>
+                <BrightnessWidget />
                 <Routes>
                     <Route path="/home" element={<LandingPage />} />
                     <Route path="/login" element={<Login />} />

@@ -77,7 +77,7 @@ export default function Premium() {
     };
 
     // WhatsApp & Email support links
-    const supportPhone = "923001234567"; // Replace with your admin contact
+    const supportPhone = "923095367405"; // Admin contact for WhatsApp verification
     const currentRef = subStatus?.payment_id ? subStatus.payment_id : referenceNumber;
     const planName = selectedPlan === 'one_time' ? 'Lifetime Access (PKR 999)' : 'Monthly Pro (PKR 2,499)';
     const amountVal = selectedPlan === 'one_time' ? '999' : '2499';
@@ -162,10 +162,12 @@ export default function Premium() {
                         }}>✨</div>
                         
                         <h2 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', color: '#10B981' }}>
-                            You are a Premium Member!
+                            {subStatus?.is_dentist ? '👨‍⚕️ Dentist Access Active!' : 'You are a Premium Member!'}
                         </h2>
                         <p style={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: 15, margin: '0 0 24px' }}>
-                            Your account has full access to all DeepSense AI features and priority services.
+                            {subStatus?.is_dentist
+                                ? 'As a registered dentist, you have unlimited 100% free access to all DeepSense features, Telehealth video calls, and AI analysis.'
+                                : 'Your account has full access to all DeepSense AI features and priority services.'}
                         </p>
 
                         <div style={{
@@ -361,7 +363,7 @@ export default function Premium() {
                                         <span style={{ color: '#10B981' }}>✓</span> Unlimited AI X-Ray Analysis
                                     </li>
                                     <li style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{ color: '#10B981' }}>✓</span> YOLOv8 + CNN Pathology Detection
+                                        <span style={{ color: '#10B981' }}>✓</span> DeepSense V2 Pathology Detection
                                     </li>
                                     <li style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                                         <span style={{ color: '#10B981' }}>✓</span> Claude AI Clinical Assistant
@@ -518,7 +520,7 @@ export default function Premium() {
                                     >
                                         <div style={{ fontSize: 24 }}>🟢</div>
                                         <div>
-                                            <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#fff' : '#0F172A' }}>EasyPaisa Account</div>
+                                            <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#fff' : '#0F172A' }}>EasyPaisa</div>
                                             <div style={{ fontSize: 12, color: '#64748B' }}>Instant mobile wallet transfer</div>
                                         </div>
                                     </div>
@@ -533,8 +535,8 @@ export default function Premium() {
                                     >
                                         <div style={{ fontSize: 24 }}>🏦</div>
                                         <div>
-                                            <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#fff' : '#0F172A' }}>Meezan Bank</div>
-                                            <div style={{ fontSize: 12, color: '#64748B' }}>Online Bank Transfer / Raast / IBAN</div>
+                                            <div style={{ fontWeight: 700, fontSize: 14, color: isDark ? '#fff' : '#0F172A' }}>Bank</div>
+                                            <div style={{ fontSize: 12, color: '#64748B' }}>Online Transfer · Meezan Bank</div>
                                         </div>
                                     </div>
                                 </div>
@@ -555,11 +557,11 @@ export default function Premium() {
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span style={{ color: '#64748B', fontSize: 13 }}>EasyPaisa Number:</span>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                <strong style={{ color: '#10B981', fontFamily: 'monospace', fontSize: 15 }}>0300-1234567</strong>
+                                                <strong style={{ color: '#10B981', fontFamily: 'monospace', fontSize: 15 }}>0309-5367405</strong>
                                                 <button
                                                     type="button"
-                                                    onClick={() => copyToClipboard('03001234567', 'ep')}
-                                                    style={{ background: 'none', border: 'none', color: '#14B8A6', cursor: 'pointer', fontSize: 12 }}
+                                                    onClick={() => copyToClipboard('03095367405', 'ep')}
+                                                    style={{ background: 'none', border: 'none', color: '#14B8A6', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
                                                 >
                                                     {copiedField === 'ep' ? '✓ Copied' : 'Copy'}
                                                 </button>
@@ -574,20 +576,20 @@ export default function Premium() {
                                     <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span style={{ color: '#64748B', fontSize: 13 }}>Bank Name:</span>
-                                            <strong style={{ color: isDark ? '#fff' : '#0F172A' }}>Meezan Bank Ltd</strong>
+                                            <strong style={{ color: isDark ? '#fff' : '#0F172A' }}>Meezan Bank</strong>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                             <span style={{ color: '#64748B', fontSize: 13 }}>Account Title:</span>
                                             <strong style={{ color: isDark ? '#fff' : '#0F172A' }}>DeepSense AI</strong>
                                         </div>
                                         <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                            <span style={{ color: '#64748B', fontSize: 13 }}>Account / IBAN:</span>
+                                            <span style={{ color: '#64748B', fontSize: 13 }}>Account Number:</span>
                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-                                                <strong style={{ color: '#14B8A6', fontFamily: 'monospace', fontSize: 13 }}>PK12MEZN0001234567890123</strong>
+                                                <strong style={{ color: '#14B8A6', fontFamily: 'monospace', fontSize: 15 }}>03230112679301</strong>
                                                 <button
                                                     type="button"
-                                                    onClick={() => copyToClipboard('PK12MEZN0001234567890123', 'iban')}
-                                                    style={{ background: 'none', border: 'none', color: '#14B8A6', cursor: 'pointer', fontSize: 12 }}
+                                                    onClick={() => copyToClipboard('03230112679301', 'iban')}
+                                                    style={{ background: 'none', border: 'none', color: '#14B8A6', cursor: 'pointer', fontSize: 12, fontWeight: 700 }}
                                                 >
                                                     {copiedField === 'iban' ? '✓ Copied' : 'Copy'}
                                                 </button>

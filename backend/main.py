@@ -804,6 +804,13 @@ async def delete_report(report_id: str, user=Depends(require_verified_dentist)):
 
 @app.get("/reports/{patient_id}")
 async def get_patient_reports(patient_id: str, user=Depends(get_current_user)):
+    # Security: dentists can only view reports of their OWN patients
+    if user["role"] == "admin":
+        ownership = supabase.table("patients")\
+            .select("id").eq("id", patient_id)\
+            .eq("admin_id", user["user_id"]).execute()
+        if not ownership.data:
+            raise HTTPException(403, "You do not have permission to view this patient's reports")
     result = supabase.table("xray_reports")\
         .select("*").eq("patient_id", patient_id).execute()
     return result.data
@@ -1260,10 +1267,12 @@ async def auto_cancel_appointments():
         return {"cancelled": len(result.data) if result.data else 0}
     except Exception as e:
         raise HTTPException(500, str(e))
-from ultralytics import YOLO
+from deepsense_infer import DentalDetector
 import cv2, numpy as np, base64, io
 
-_yolo_model = YOLO(os.path.join(os.path.dirname(__file__), 'best.pt'))
+_detector_path = os.path.join(os.path.dirname(__file__), 'best.pt')
+_dental_detector = DentalDetector(_detector_path)
+
 @app.post("/analyze")
 async def analyze_xray(
     file: UploadFile = File(...),
@@ -1275,10 +1284,6 @@ async def analyze_xray(
         import io, base64
         import cv2, numpy as np
 
-        YOLO_CLASSES = [
-            'Impacted', 'Caries', 'Filling', 'Bone Loss',
-            'Implant', 'Deep Caries', 'Fracture', 'Periapical Lesion'
-        ]
         COLORS = {
             'Caries':            (0,   200, 150),
             'Deep Caries':       (255,  50,  50),
@@ -1301,26 +1306,23 @@ async def analyze_xray(
         }
 
         contents = await file.read()
+        raw_detections = _dental_detector.predict_bytes(contents, thr=0.25)
+
         img_pil = Image.open(io.BytesIO(contents)).convert('RGB')
         img_np  = np.array(img_pil)
-
-        results = _yolo_model(img_pil, conf=0.25, verbose=False)
-        result  = results[0]
 
         detections  = []
         class_counts = {}
         findings    = {}
 
-        if result.boxes is not None and len(result.boxes) > 0:
-            for box in result.boxes:
-                cls_id   = int(box.cls[0])
-                conf     = float(box.conf[0])
-                cls_name = YOLO_CLASSES[cls_id] if cls_id < len(YOLO_CLASSES) else f"Class_{cls_id}"
-                x1, y1, x2, y2 = map(int, box.xyxy[0].tolist())
-                detections.append({"class": cls_name, "confidence": round(conf, 4), "bbox": [x1, y1, x2, y2]})
-                class_counts[cls_name] = class_counts.get(cls_name, 0) + 1
-                if cls_name not in findings or conf > findings[cls_name]:
-                    findings[cls_name] = round(conf, 4)
+        for det in raw_detections:
+            cls_name = det["class"]
+            conf     = float(det["confidence"])
+            x1, y1, x2, y2 = det["bbox"]
+            detections.append({"class": cls_name, "confidence": round(conf, 4), "bbox": [x1, y1, x2, y2]})
+            class_counts[cls_name] = class_counts.get(cls_name, 0) + 1
+            if cls_name not in findings or conf > findings[cls_name]:
+                findings[cls_name] = round(conf, 4)
 
         img_draw = img_np.copy()
         for det in detections:
@@ -1433,7 +1435,16 @@ def check_premium_status(user_id: str):
 
 @app.get("/premium/status")
 async def get_premium_status(user=Depends(get_current_user)):
-    """Check if current user has active or pending premium."""
+    """Check if current user has active or pending premium. Dentists have 100% free lifetime access."""
+    user_role = (user.get("role") or "").lower()
+    if user_role in ["admin", "dentist", "doctor"] or (user_role != "patient" and user_role):
+        return {
+            "is_premium": True,
+            "status": "active",
+            "is_dentist": True,
+            "plan_type": "lifetime",
+        }
+
     sub = check_premium_status(user["user_id"])
     if sub:
         return {
@@ -1617,4 +1628,4 @@ async def get_dentist_telehealth_calls(user=Depends(require_verified_dentist)):
         return calls
     except Exception as e:
         print(f"Dentist telehealth error: {e}")
-        raise HTTPException(500, str(e))
+        raise HTTPException(500, str(e))

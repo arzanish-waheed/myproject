@@ -817,7 +817,8 @@ const CallEndedSummary = ({ callDuration, roomName, onReturn }) => {
 
 export default function Telehealth() {
     const user = JSON.parse(localStorage.getItem('user') || '{}');
-    const isDentist = user.role === 'admin';
+    const userRole = (user.role || '').toLowerCase();
+    const isDentist = userRole === 'admin' || userRole === 'dentist' || userRole === 'doctor' || !!user.license_number || (userRole !== 'patient' && !!user.role);
 
     const [policyOpen, setPolicyOpen] = useState(false);
     const [inCall, setInCall] = useState(false);
@@ -830,9 +831,9 @@ export default function Telehealth() {
     const callStartTime = useRef(null);
     const [callDuration, setCallDuration] = useState('00:00');
 
-    // Premium state (patient only)
-    const [premiumLoading, setPremiumLoading] = useState(true);
-    const [isPremium, setIsPremium] = useState(false);
+    // Premium state (patient only - Dentists have 100% free lifetime access)
+    const [premiumLoading, setPremiumLoading] = useState(!isDentist);
+    const [isPremium, setIsPremium] = useState(isDentist);
     const [premiumInfo, setPremiumInfo] = useState(null);
 
     // Appointment-based calls

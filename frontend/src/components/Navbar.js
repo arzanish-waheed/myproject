@@ -12,7 +12,6 @@ const allLinks = [
     { path: '/appointments', label: 'Appointments', icon: '◷' },
     { path: '/reports',      label: 'Reports',      icon: '◧' },
     { path: '/telehealth',   label: 'Tele-Health',  icon: '◎' },
-    { path: '/premium',      label: 'Premium',      icon: '👑' },
 ];
 
 const patientLinks = [
@@ -25,7 +24,7 @@ const patientLinks = [
 export default function Navbar() {
     const navigate  = useNavigate();
     const location  = useLocation();
-    const { isDark, toggleTheme } = useTheme();
+    const { isDark, toggleTheme, brightness, setBrightness } = useTheme();
     const [policyOpen, setPolicyOpen]   = useState(false);
     const [scrolled, setScrolled]       = useState(false);
     const [dropdown, setDropdown]       = useState(false);
@@ -38,7 +37,8 @@ export default function Navbar() {
     const picRef      = useRef(null);
 
     const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
-    const links = user.role === 'admin' ? allLinks : patientLinks;
+    const isDentist = user.role === 'admin' || user.role === 'dentist' || (user.role && user.role !== 'patient');
+    const links = isDentist ? allLinks : patientLinks;
 
     // Settings form
     const [form, setForm] = useState({
@@ -54,7 +54,7 @@ export default function Navbar() {
     }, []);
 
     useEffect(() => {
-        if (user.role === 'admin') {
+        if (isDentist) {
             const fetchPendingCount = async () => {
                 try {
                     const res = await API.get('/appointments/pending-count');
@@ -65,7 +65,7 @@ export default function Navbar() {
             const interval = setInterval(fetchPendingCount, 30000);
             return () => clearInterval(interval);
         }
-    }, [user.role]);
+    }, [isDentist]);
 
     // Dropdown bahar click pe band karo
     useEffect(() => {
@@ -198,6 +198,48 @@ export default function Navbar() {
                 })}
             </div>
 
+            {/* Brightness Control in Navbar */}
+            <div
+                style={{
+                    display: 'flex',
+                    alignItems: 'center',
+                    gap: 6,
+                    marginRight: 10,
+                    background: isDark ? 'rgba(255,255,255,0.05)' : 'rgba(0,0,0,0.04)',
+                    border: isDark ? '1px solid rgba(255,255,255,0.1)' : '1px solid rgba(0,0,0,0.1)',
+                    borderRadius: 20,
+                    padding: '3px 10px',
+                    transition: 'all 0.2s',
+                }}
+                title={`Screen Brightness: ${brightness}%`}
+            >
+                <span style={{ fontSize: 13, userSelect: 'none' }}>🔆</span>
+                <input
+                    type="range"
+                    min="60"
+                    max="140"
+                    step="2"
+                    value={brightness}
+                    onChange={e => setBrightness(Number(e.target.value))}
+                    style={{
+                        width: 60,
+                        cursor: 'pointer',
+                        accentColor: '#0D9488',
+                        height: 4,
+                    }}
+                />
+                <span style={{
+                    fontSize: 10,
+                    fontWeight: 700,
+                    color: isDark ? '#94A3B8' : '#475569',
+                    minWidth: 28,
+                    textAlign: 'right',
+                    userSelect: 'none',
+                }}>
+                    {brightness}%
+                </span>
+            </div>
+
             {/* Theme Toggle */}
             <motion.button
                 onClick={toggleTheme}
@@ -328,14 +370,16 @@ export default function Navbar() {
                                     </motion.button>
                                 )}
 
-                                {/* Premium */}
-                                <motion.button style={{...styles.menuItem, color: '#F59E0B'}}
-                                    onClick={() => { navigate('/premium'); setDropdown(false); }}
-                                    whileHover={{ background: 'rgba(245,158,11,0.1)', color: '#FBBF24' }}
-                                >
-                                    <span style={{ fontSize: 15 }}>👑</span>
-                                    <span>Premium Membership</span>
-                                </motion.button>
+                                {/* Premium (Patients only) */}
+                                {!isDentist && (
+                                    <motion.button style={{...styles.menuItem, color: '#F59E0B'}}
+                                        onClick={() => { navigate('/premium'); setDropdown(false); }}
+                                        whileHover={{ background: 'rgba(245,158,11,0.1)', color: '#FBBF24' }}
+                                    >
+                                        <span style={{ fontSize: 15 }}>👑</span>
+                                        <span>Premium Membership</span>
+                                    </motion.button>
+                                )}
 
                                 {/* Policies */}
                                 <motion.button style={{...styles.menuItem, color: isDark ? '#94A3B8' : '#475569'}}
