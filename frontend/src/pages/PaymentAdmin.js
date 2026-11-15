@@ -64,8 +64,9 @@ export default function PaymentAdmin() {
         if (token) loadData();
     }, [token]);
 
-    const handleApprove = async (subId, userName) => {
-        if (!window.confirm(`Are you sure you want to approve premium subscription for ${userName}?`)) return;
+    const handleApprove = async (subId, patientIdentifier) => {
+        const idLabel = patientIdentifier || 'this patient';
+        if (!window.confirm(`Are you sure you want to approve premium subscription for ${idLabel}?`)) return;
         setActionLoading(subId);
         try {
             await axios.post(`${API_BASE}/payment-admin/approve`, {
@@ -80,8 +81,9 @@ export default function PaymentAdmin() {
         }
     };
 
-    const handleReject = async (subId, userName) => {
-        const reason = window.prompt(`Reject payment for ${userName}? Enter reason (optional):`);
+    const handleReject = async (subId, patientIdentifier) => {
+        const idLabel = patientIdentifier || 'this patient';
+        const reason = window.prompt(`Reject payment for ${idLabel}? Enter reason (optional):`);
         if (reason === null) return;
         setActionLoading(subId);
         try {
@@ -220,18 +222,19 @@ export default function PaymentAdmin() {
         );
     }
 
-    // ── FILTERED DATA ──
+    // ── FILTERED DATA (HIPAA Compliant - De-identified Patient ID) ──
     const pendingCount = requests.filter(r => r.status === 'pending').length;
 
     const filteredRequests = requests.filter(r => {
         const matchesStatus = statusFilter === 'all' || r.status === statusFilter;
         const matchesMethod = methodFilter === 'all' || r.payment_method === methodFilter;
         const q = search.toLowerCase();
+        const pUid = (r.patient_uid || `PID-${(r.user_id || '').slice(0, 8).toUpperCase()}`).toLowerCase();
+        const rawUid = (r.user_id || '').toLowerCase();
         const matchesSearch = !q ||
-            (r.user_name || '').toLowerCase().includes(q) ||
-            (r.user_email || '').toLowerCase().includes(q) ||
-            (r.payment_id || '').toLowerCase().includes(q) ||
-            (r.user_phone || '').includes(q);
+            pUid.includes(q) ||
+            rawUid.includes(q) ||
+            (r.payment_id || '').toLowerCase().includes(q);
         return matchesStatus && matchesMethod && matchesSearch;
     });
 
@@ -306,7 +309,7 @@ export default function PaymentAdmin() {
                 }}>
                     <span style={{ fontSize: 20 }}>🔒</span>
                     <div style={{ fontSize: 12, color: '#A7F3D0', lineHeight: 1.5 }}>
-                        <strong>Private Revenue Management:</strong> This portal is completely isolated from dentist view. All customer transactions, EasyPaisa/Meezan bank payments, and customer revenue are accessible only through these credentials.
+                        <strong>HIPAA Privacy & Data Protection:</strong> Patient names, emails, and contact details are strictly de-identified. Verification is conducted purely via assigned Patient Unique ID (PID) and Bank Reference/TID to ensure zero health/identity data leakage.
                     </div>
                 </div>
 
@@ -406,11 +409,11 @@ export default function PaymentAdmin() {
 
                     {/* Search */}
                     <input
-                        placeholder="Search by name, email, phone, Ref or TID..."
+                        placeholder="Search by Patient ID (PID-...), User ID or Ref/TID..."
                         value={search}
                         onChange={e => setSearch(e.target.value)}
                         style={{
-                            marginLeft: 'auto', padding: '9px 16px', width: 320,
+                            marginLeft: 'auto', padding: '9px 16px', width: 340,
                             background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.08)',
                             borderRadius: 10, color: '#E2E8F0', fontSize: 13, outline: 'none', fontFamily: 'inherit'
                         }}
@@ -433,7 +436,7 @@ export default function PaymentAdmin() {
                             padding: '14px 24px', background: 'rgba(16,185,129,0.08)',
                             color: '#94A3B8', fontSize: 11, fontWeight: 800, textTransform: 'uppercase', letterSpacing: 0.5
                         }}>
-                            <span>Customer / User</span>
+                            <span>Patient ID (HIPAA Protected)</span>
                             <span>Plan & Price</span>
                             <span>Payment Method</span>
                             <span>Reference & TID</span>
@@ -441,43 +444,36 @@ export default function PaymentAdmin() {
                             <span>Action</span>
                         </div>
 
-                        {filteredRequests.map(r => (
-                            <div key={r.id} style={{
-                                display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.4fr 2.4fr 1.2fr 1.6fr',
-                                padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.05)',
-                                alignItems: 'center'
-                            }}>
-                                {/* Customer */}
-                                <div>
-                                    <div style={{ color: '#fff', fontWeight: 700, fontSize: 14 }}>
-                                        {r.user_name}
-                                        <span style={{
-                                            marginLeft: 8, fontSize: 10, padding: '2px 7px', borderRadius: 4,
-                                            background: r.user_role === 'admin' ? 'rgba(124,58,237,0.2)' : 'rgba(59,130,246,0.2)',
-                                            color: r.user_role === 'admin' ? '#A78BFA' : '#60A5FA',
-                                            textTransform: 'uppercase', fontWeight: 700
-                                        }}>
-                                            {r.user_role === 'admin' ? 'Dentist' : 'Patient'}
-                                        </span>
-                                    </div>
-                                    <div style={{ color: '#94A3B8', fontSize: 12, marginTop: 2 }}>{r.user_email}</div>
-                                    {r.user_phone && r.user_phone !== '—' && (
-                                        <div style={{ marginTop: 6 }}>
-                                            <a
-                                                href={`https://wa.me/${r.user_phone.replace(/[^0-9]/g, '').replace(/^0/, '92')}?text=${encodeURIComponent(`Hi ${r.user_name}! DeepSense Billing Team here regarding your payment [${r.payment_id}].`)}`}
-                                                target="_blank"
-                                                rel="noopener noreferrer"
+                        {filteredRequests.map(r => {
+                            const pId = r.patient_uid || `PID-${(r.user_id || '').slice(0, 8).toUpperCase()}`;
+                            return (
+                                <div key={r.id} style={{
+                                    display: 'grid', gridTemplateColumns: '2fr 1.6fr 1.4fr 2.4fr 1.2fr 1.6fr',
+                                    padding: '16px 24px', borderTop: '1px solid rgba(255,255,255,0.05)',
+                                    alignItems: 'center'
+                                }}>
+                                    {/* Patient Identifier (HIPAA Protected - No PII) */}
+                                    <div>
+                                        <div style={{ color: '#fff', fontWeight: 800, fontSize: 14, fontFamily: 'monospace', display: 'flex', alignItems: 'center', gap: 6 }}>
+                                            <span>🆔 {pId}</span>
+                                            <button
+                                                type="button"
+                                                onClick={() => copyText(pId)}
                                                 style={{
-                                                    fontSize: 11, color: '#25D366', textDecoration: 'none',
-                                                    display: 'inline-flex', alignItems: 'center', gap: 4,
-                                                    background: 'rgba(37,211,102,0.1)', padding: '3px 8px', borderRadius: 6
+                                                    background: 'none', border: 'none', color: '#14B8A6',
+                                                    cursor: 'pointer', fontSize: 11, fontWeight: 700, padding: 0
                                                 }}
                                             >
-                                                <span>💬</span> WhatsApp: {r.user_phone}
-                                            </a>
+                                                {copiedTid === pId ? '✓' : 'Copy'}
+                                            </button>
                                         </div>
-                                    )}
-                                </div>
+                                        <div style={{ color: '#10B981', fontSize: 11, marginTop: 4, display: 'inline-flex', alignItems: 'center', gap: 4 }}>
+                                            🔒 HIPAA De-identified Account
+                                        </div>
+                                        <div style={{ color: '#64748B', fontSize: 10, marginTop: 2, fontFamily: 'monospace' }}>
+                                            UID: {(r.user_id || '').slice(0, 8)}...{(r.user_id || '').slice(-4)}
+                                        </div>
+                                    </div>
 
                                 {/* Plan & Price */}
                                 <div>
@@ -546,7 +542,7 @@ export default function PaymentAdmin() {
                                     {r.status === 'pending' ? (
                                         <>
                                             <button
-                                                onClick={() => handleApprove(r.id, r.user_name)}
+                                                onClick={() => handleApprove(r.id, pId)}
                                                 disabled={actionLoading === r.id}
                                                 style={{
                                                     background: 'linear-gradient(135deg, #10B981, #0D9488)',
@@ -559,7 +555,7 @@ export default function PaymentAdmin() {
                                                 {actionLoading === r.id ? '...' : '✓ Approve'}
                                             </button>
                                             <button
-                                                onClick={() => handleReject(r.id, r.user_name)}
+                                                onClick={() => handleReject(r.id, pId)}
                                                 disabled={actionLoading === r.id}
                                                 style={{
                                                     background: 'rgba(239,68,68,0.12)',
@@ -580,7 +576,8 @@ export default function PaymentAdmin() {
                                     )}
                                 </div>
                             </div>
-                        ))}
+                            );
+                        })}
 
                         {filteredRequests.length === 0 && (
                             <div style={{ padding: 60, textAlign: 'center', color: '#64748B' }}>

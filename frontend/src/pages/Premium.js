@@ -76,18 +76,19 @@ export default function Premium() {
         }
     };
 
-    // WhatsApp & Email support links
+    // WhatsApp & Email support links (HIPAA Compliant - No personal data/email leaked)
     const supportPhone = "923095367405"; // Admin contact for WhatsApp verification
     const currentRef = subStatus?.payment_id ? subStatus.payment_id : referenceNumber;
     const planName = selectedPlan === 'one_time' ? 'Lifetime Access (PKR 999)' : 'Monthly Pro (PKR 2,499)';
     const amountVal = selectedPlan === 'one_time' ? '999' : '2499';
+    const patientUid = user?.id ? `PID-${user.id.slice(0, 8).toUpperCase()}` : 'PID-PATIENT';
     
     const waMessage = encodeURIComponent(
-        `Hi DeepSense Team!\nI have made payment for Premium Membership.\n\n👤 Name: ${user.full_name || 'User'}\n📧 Email: ${user.email || ''}\n💳 Plan: ${planName}\n💰 Amount: PKR ${amountVal}\n🔖 Reference: ${currentRef}\n🔢 Transaction ID: ${transactionId || (subStatus?.payment_id || '')}\n\nHere is my payment screenshot:`
+        `Hi DeepSense Team!\nI have made payment for Premium Membership.\n\n🆔 Patient ID: ${patientUid}\n💳 Plan: ${planName}\n💰 Amount: PKR ${amountVal}\n🔖 Reference: ${currentRef}\n🔢 Transaction ID: ${transactionId || (subStatus?.payment_id || '')}\n\nHere is my payment screenshot:`
     );
     const waLink = `https://wa.me/${supportPhone}?text=${waMessage}`;
 
-    const mailtoLink = `mailto:deepsense.dental@gmail.com?subject=${encodeURIComponent(`DeepSense Payment Proof - ${currentRef}`)}&body=${waMessage}`;
+    const mailtoLink = `mailto:deepsense.dental@gmail.com?subject=${encodeURIComponent(`DeepSense Payment Proof - ${patientUid} - ${currentRef}`)}&body=${waMessage}`;
 
     return (
         <div style={{
@@ -473,35 +474,62 @@ export default function Premium() {
                                 </div>
                             </div>
 
-                            {/* Reference Number Box */}
+                            {/* Reference Number & Patient ID Box (HIPAA Protected) */}
                             <div style={{
                                 background: 'rgba(13,148,136,0.08)',
                                 border: '1px dashed #14B8A6',
                                 borderRadius: 16, padding: '16px 20px', marginBottom: 24,
-                                display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 12
+                                display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: 16
                             }}>
-                                <div>
-                                    <div style={{ fontSize: 11, color: '#14B8A6', textTransform: 'uppercase', fontWeight: 800, letterSpacing: 0.5 }}>
-                                        Your Unique Payment Reference
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <div style={{ fontSize: 11, color: '#14B8A6', textTransform: 'uppercase', fontWeight: 800, letterSpacing: 0.5 }}>
+                                            🆔 Assigned Patient ID
+                                        </div>
+                                        <div style={{ fontSize: 18, fontWeight: 900, fontFamily: 'monospace', color: isDark ? '#fff' : '#0F172A', marginTop: 4 }}>
+                                            {patientUid}
+                                        </div>
+                                        <div style={{ fontSize: 11, color: '#10B981', marginTop: 2, fontWeight: 600 }}>
+                                            🔒 HIPAA Protected Identifier
+                                        </div>
                                     </div>
-                                    <div style={{ fontSize: 20, fontWeight: 900, fontFamily: 'monospace', color: isDark ? '#fff' : '#0F172A', marginTop: 4 }}>
-                                        {referenceNumber}
-                                    </div>
-                                    <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 }}>
-                                        💡 Please mention this reference code in the transfer remark/message.
-                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => copyToClipboard(patientUid, 'pid')}
+                                        style={{
+                                            background: copiedField === 'pid' ? '#10B981' : 'rgba(13,148,136,0.2)',
+                                            border: '1px solid rgba(13,148,136,0.3)', color: copiedField === 'pid' ? '#fff' : '#14B8A6',
+                                            padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                                        }}
+                                    >
+                                        {copiedField === 'pid' ? '✓ Copied' : '📋 Copy ID'}
+                                    </button>
                                 </div>
-                                <button
-                                    type="button"
-                                    onClick={() => copyToClipboard(referenceNumber, 'ref')}
-                                    style={{
-                                        background: copiedField === 'ref' ? '#10B981' : 'rgba(13,148,136,0.2)',
-                                        border: '1px solid rgba(13,148,136,0.3)', color: copiedField === 'ref' ? '#fff' : '#14B8A6',
-                                        padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer'
-                                    }}
-                                >
-                                    {copiedField === 'ref' ? '✓ Copied' : '📋 Copy Reference'}
-                                </button>
+
+                                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                    <div>
+                                        <div style={{ fontSize: 11, color: '#14B8A6', textTransform: 'uppercase', fontWeight: 800, letterSpacing: 0.5 }}>
+                                            🔖 Payment Reference Code
+                                        </div>
+                                        <div style={{ fontSize: 18, fontWeight: 900, fontFamily: 'monospace', color: isDark ? '#fff' : '#0F172A', marginTop: 4 }}>
+                                            {referenceNumber}
+                                        </div>
+                                        <div style={{ fontSize: 11, color: isDark ? '#94A3B8' : '#64748B', marginTop: 2 }}>
+                                            💡 Mention in transfer remark
+                                        </div>
+                                    </div>
+                                    <button
+                                        type="button"
+                                        onClick={() => copyToClipboard(referenceNumber, 'ref')}
+                                        style={{
+                                            background: copiedField === 'ref' ? '#10B981' : 'rgba(13,148,136,0.2)',
+                                            border: '1px solid rgba(13,148,136,0.3)', color: copiedField === 'ref' ? '#fff' : '#14B8A6',
+                                            padding: '8px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: 'pointer'
+                                        }}
+                                    >
+                                        {copiedField === 'ref' ? '✓ Copied' : '📋 Copy Ref'}
+                                    </button>
+                                </div>
                             </div>
 
                             {/* Payment Method Switcher */}

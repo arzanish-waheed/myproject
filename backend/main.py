@@ -640,17 +640,15 @@ async def payment_admin_get_requests(admin=Depends(get_payment_admin)):
     try:
         subs_res = supabase.table("premium_subscriptions").select("*").execute()
         subs = subs_res.data or []
-        users_res = supabase.table("users").select("id, full_name, email, phone, role").execute()
-        user_map = {u["id"]: u for u in (users_res.data or [])}
         enriched = []
         for s in subs:
-            u_info = user_map.get(s.get("user_id"), {})
+            uid = s.get("user_id") or ""
+            # HIPAA de-identification: use Patient Unique ID (PID) instead of leaking full name/email/phone
+            patient_uid = f"PID-{uid[:8].upper()}" if uid else "PID-UNKNOWN"
             enriched.append({
                 **s,
-                "user_name": u_info.get("full_name", "Unknown User"),
-                "user_email": u_info.get("email", "—"),
-                "user_phone": u_info.get("phone", "—"),
-                "user_role": u_info.get("role", "patient"),
+                "patient_uid": patient_uid,
+                "user_role": "patient",
             })
         enriched.sort(key=lambda x: (0 if x.get("status") == "pending" else 1, x.get("id") or 0), reverse=False)
         return enriched
