@@ -223,6 +223,8 @@ class GoogleAuthModel(BaseModel):
     credential: str
     role: Optional[str] = None
     license_number: Optional[str] = None
+    phone: Optional[str] = None
+    full_name: Optional[str] = None
 
 class SuperAdminLoginModel(BaseModel):
     email: str
@@ -331,6 +333,8 @@ async def delete_my_account(user=Depends(get_current_user)):
 @app.post("/send-otp")
 async def send_otp(data: SendOTPModel):
     try:
+        if not re.match(r"^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$", (data.email or "").strip()):
+            raise HTTPException(400, "Invalid email format. Please enter a valid email address.")
         existing = supabase.table("users")\
             .select("id").eq("email", data.email).execute()
         if existing.data:
@@ -455,7 +459,7 @@ async def google_auth(data: GoogleAuthModel):
             data.credential, google_requests.Request(), GOOGLE_CLIENT_ID
         )
         email     = idinfo.get("email")
-        full_name = idinfo.get("name", "")
+        full_name = (data.full_name or "").strip() or idinfo.get("name", "")
         if not email:
             raise HTTPException(400, "Could not retrieve email from Google")
         existing = supabase.table("users")\
@@ -475,6 +479,7 @@ async def google_auth(data: GoogleAuthModel):
             "password": random_password,
             "role": data.role,
             "license_number": data.license_number if data.role == "admin" else None,
+            "phone": data.phone or None,
             "auth_provider": "google",
             "is_verified": False if data.role == "admin" else True,
         }).execute()
@@ -879,6 +884,13 @@ async def get_appointments(user=Depends(get_current_user)):
 @app.post("/availability")
 async def set_availability(data: AvailabilityModel, user=Depends(require_verified_dentist)):
     try:
+        # If user picked 12:00 AM (00:00:00) as end time of night shift, map to 23:59:00 (end of day)
+        if data.end_time in ("00:00:00", "00:00") and data.start_time > "00:00:00":
+            data.end_time = "23:59:00"
+
+        if data.end_time <= data.start_time:
+            raise HTTPException(400, "End time must be after start time (e.g. 09:00 AM to 05:00 PM).")
+
         # Best-effort delete of existing same slot (ignore if none found)
         try:
             supabase.table("dentist_availability")\
@@ -900,9 +912,14 @@ async def set_availability(data: AvailabilityModel, user=Depends(require_verifie
             "is_active": True
         }).execute()
         return result.data[0]
+    except HTTPException:
+        raise
     except Exception as e:
+        err_str = str(e)
         print(f"Availability error: {e}")
-        raise HTTPException(500, str(e))
+        if "valid_time_range" in err_str:
+            raise HTTPException(400, "End time must be after start time.")
+        raise HTTPException(500, "Failed to save availability.")
 
 @app.get("/availability")
 async def get_my_availability(user=Depends(require_verified_dentist)):
@@ -1255,16 +1272,138 @@ async def cancel_appointment(data: AcceptAlternativeModel, user=Depends(get_curr
 
 @app.post("/appointments/auto-cancel")
 async def auto_cancel_appointments():
+    """
+    1. Auto-cancels pending requests older than 48 hours.
+    2. Auto-cancels approved/booked appointments if 10 minutes have passed since scheduled time without joining.
+    """
     try:
-        cutoff = (datetime.utcnow() - timedelta(hours=48)).isoformat()
-        result = supabase.table("appointments")\
-            .update({"status": "auto_cancelled"})\
+        now_pkt = datetime.utcnow() + timedelta(hours=5)
+        today_pkt = now_pkt.strftime("%Y-%m-%d")
+
+        # 1. 48-hour pending requests
+        cutoff_48 = (datetime.utcnow() - timedelta(hours=48)).isoformat()
+        supabase.table("appointments")\
+            .update({"status": "auto_cancelled", "dentist_message": "Request expired (no response within 48h)"})\
             .eq("status", "pending")\
-            .lt("created_at", cutoff)\
+            .lt("created_at", cutoff_48)\
             .execute()
-        return {"cancelled": len(result.data) if result.data else 0}
+
+        # 2. 10-minute no-show check for approved/booked appointments
+        active_appts = supabase.table("appointments")\
+            .select("*")\
+            .in_("status", ["approved", "booked"])\
+            .lte("appointment_date", today_pkt)\
+            .execute()
+
+        auto_cancelled_list = []
+        for appt in (active_appts.data or []):
+            try:
+                appt_date = datetime.strptime(appt["appointment_date"], "%Y-%m-%d").date()
+                appt_time = datetime.strptime(appt["time_slot"][:5], "%H:%M").time()
+                appt_dt = datetime.combine(appt_date, appt_time)
+
+                # If scheduled time + 10 minutes has passed in PKT
+                if now_pkt > (appt_dt + timedelta(minutes=10)):
+                    supabase.table("appointments").update({
+                        "status": "auto_cancelled",
+                        "dentist_message": "Appointment cancelled: Patient did not join within 10 minutes of scheduled time.",
+                        "updated_at": datetime.utcnow().isoformat()
+                    }).eq("id", appt["id"]).execute()
+                    auto_cancelled_list.append(appt["id"])
+
+                    # Send notification email to patient
+                    p_res = supabase.table("users").select("email, full_name").eq("id", appt["patient_id"]).execute()
+                    if p_res.data and p_res.data[0].get("email"):
+                        p_email = p_res.data[0]["email"]
+                        p_name = p_res.data[0].get("full_name", "Patient")
+                        send_appointment_email(
+                            p_email,
+                            "Appointment Cancelled — 10 Minute No-Show",
+                            f'''<div style="background:#0F1928;border:1px solid #EF4444;border-radius:10px;padding:20px;color:#fff;">
+                                <h3 style="color:#EF4444;margin-top:0;">⚠️ Appointment Cancelled</h3>
+                                <p style="color:#CBD5E1;">Hello {p_name},</p>
+                                <p style="color:#CBD5E1;">Your appointment scheduled for <strong>{appt['appointment_date']}</strong> at <strong>{appt['time_slot']}</strong> was automatically cancelled because it was not joined within 10 minutes of scheduled time.</p>
+                                <p style="color:#94A3B8;font-size:13px;">You can book a new appointment slot at your convenience.</p>
+                            </div>'''
+                        )
+            except Exception as parse_e:
+                print(f"Auto-cancel parse error for {appt.get('id')}: {parse_e}")
+                continue
+
+        return {"cancelled": len(auto_cancelled_list)}
     except Exception as e:
+        print(f"Auto-cancel error: {e}")
         raise HTTPException(500, str(e))
+
+@app.get("/notifications")
+async def get_notifications(user=Depends(get_current_user)):
+    """Get recent notifications for the logged in user."""
+    try:
+        notifications = []
+        if user["role"] == "patient":
+            appts = supabase.table("appointments")\
+                .select("id, appointment_date, time_slot, status, dentist_message, proposed_date, proposed_time, updated_at, admin_id")\
+                .eq("patient_id", user["user_id"])\
+                .in_("status", ["auto_cancelled", "cancelled", "approved", "alternative_proposed"])\
+                .order("updated_at", desc=True)\
+                .limit(10)\
+                .execute()
+
+            for a in (appts.data or []):
+                d_res = supabase.table("users").select("full_name").eq("id", a.get("admin_id")).execute()
+                d_name = d_res.data[0]["full_name"] if d_res.data else "Dentist"
+                if not d_name.startswith("Dr."):
+                    d_name = f"Dr. {d_name}"
+
+                if a["status"] == "auto_cancelled":
+                    notifications.append({
+                        "id": f"notif-auto-{a['id']}",
+                        "type": "error",
+                        "title": "Appointment Cancelled (10-min limit)",
+                        "message": f"Appointment with {d_name} on {a['appointment_date']} at {a['time_slot']} was cancelled because you did not join within 10 minutes.",
+                        "date": a.get("updated_at") or a.get("appointment_date"),
+                    })
+                elif a["status"] == "alternative_proposed":
+                    notifications.append({
+                        "id": f"notif-alt-{a['id']}",
+                        "type": "warning",
+                        "title": "New Time Proposed",
+                        "message": f"{d_name} proposed a new appointment time: {a.get('proposed_date')} at {a.get('proposed_time')}.",
+                        "date": a.get("updated_at") or a.get("appointment_date"),
+                    })
+                elif a["status"] == "approved":
+                    notifications.append({
+                        "id": f"notif-appr-{a['id']}",
+                        "type": "success",
+                        "title": "Appointment Approved",
+                        "message": f"Your appointment with {d_name} on {a['appointment_date']} at {a['time_slot']} has been confirmed.",
+                        "date": a.get("updated_at") or a.get("appointment_date"),
+                    })
+        else:
+            # Dentist notifications
+            pending = supabase.table("appointments")\
+                .select("id, appointment_date, time_slot, created_at, patient_id")\
+                .eq("admin_id", user["user_id"])\
+                .eq("status", "pending")\
+                .order("created_at", desc=True)\
+                .limit(10)\
+                .execute()
+
+            for p in (pending.data or []):
+                p_res = supabase.table("users").select("full_name").eq("id", p.get("patient_id")).execute()
+                p_name = p_res.data[0]["full_name"] if p_res.data else "Patient"
+                notifications.append({
+                    "id": f"notif-req-{p['id']}",
+                    "type": "info",
+                    "title": "New Appointment Request",
+                    "message": f"{p_name} requested an appointment on {p['appointment_date']} at {p['time_slot']}.",
+                    "date": p.get("created_at"),
+                })
+
+        return notifications
+    except Exception as e:
+        print(f"Error fetching notifications: {e}")
+        return []
 from deepsense_infer import DentalDetector
 import cv2, numpy as np, base64, io
 
@@ -1523,61 +1662,94 @@ async def purchase_premium(data: PremiumPurchaseModel, user=Depends(get_current_
         print(f"Premium purchase error: {e}")
         raise HTTPException(500, str(e))
 
+@app.post("/premium/consume-one-time")
+async def consume_one_time_premium(user=Depends(get_current_user)):
+    """Expires a one-time session subscription immediately after call/session completion."""
+    try:
+        user_role = (user.get("role") or "").lower()
+        if user_role in ["admin", "dentist", "doctor"]:
+            return {"message": "Dentist account unaffected"}
+
+        sub = check_premium_status(user["user_id"])
+        if sub and sub.get("plan_type") == "one_time":
+            supabase.table("premium_subscriptions")\
+                .update({
+                    "status": "used",
+                    "expires_at": datetime.utcnow().isoformat()
+                })\
+                .eq("id", sub["id"]).execute()
+            return {"message": "One-time session consumed and expired.", "status": "used"}
+        return {"message": "No active one-time subscription found."}
+    except Exception as e:
+        print(f"Error consuming one-time premium: {e}")
+        raise HTTPException(500, str(e))
+
+@app.delete("/appointments/{appointment_id}")
+async def delete_appointment(appointment_id: str, user=Depends(get_current_user)):
+    """Dentist or patient can delete an appointment from their records."""
+    try:
+        if user["role"] == "admin":
+            supabase.table("appointments").delete().eq("id", appointment_id).eq("admin_id", user["user_id"]).execute()
+        else:
+            supabase.table("appointments").delete().eq("id", appointment_id).eq("patient_id", user["user_id"]).execute()
+        return {"message": "Appointment deleted successfully"}
+    except Exception as e:
+        raise HTTPException(500, str(e))
+
 # ============================================================
 # TELEHEALTH APPOINTMENT-BASED CALL ENDPOINTS
 # ============================================================
 
 @app.get("/telehealth/my-call")
 async def get_my_telehealth_call(user=Depends(get_current_user)):
-    """Patient: Get approved/booked appointments that are within call window (±15 min)."""
+    """Patient: Get approved/booked appointments that are within call window."""
     try:
         result = supabase.table("appointments")\
             .select("*")\
             .eq("patient_id", user["user_id"])\
             .in_("status", ["approved", "booked"])\
+            .order("appointment_date", desc=False)\
             .execute()
 
-        now = datetime.utcnow()
+        # Pakistan Standard Time (PKT) = UTC + 5 hours
+        now = datetime.utcnow() + timedelta(hours=5)
         callable_appointments = []
 
         for appt in result.data:
             try:
                 appt_date = datetime.strptime(appt["appointment_date"], "%Y-%m-%d")
-                appt_time = datetime.strptime(appt["time_slot"], "%H:%M").time()
+                appt_time = datetime.strptime(appt["time_slot"][:5], "%H:%M").time()
                 appt_datetime = datetime.combine(appt_date.date(), appt_time)
 
                 diff_minutes = (appt_datetime - now).total_seconds() / 60
 
-                # Within ±15 minutes window
-                if -15 <= diff_minutes <= 15:
-                    room_code = f"DS-APPT-{appt['id'][:8].upper()}"
-                    # Get dentist name
-                    dentist_res = supabase.table("users")\
-                        .select("full_name").eq("id", appt["admin_id"]).execute()
-                    dentist_name = dentist_res.data[0]["full_name"] if dentist_res.data else "Dentist"
+                dentist_res = supabase.table("users")\
+                    .select("full_name").eq("id", appt["admin_id"]).execute()
+                raw_dentist_name = dentist_res.data[0]["full_name"] if dentist_res.data else "Dentist"
+                clean_dentist_name = raw_dentist_name if raw_dentist_name.startswith("Dr.") else f"Dr. {raw_dentist_name}"
+                room_code = f"DS-APPT-{appt['id'][:8].upper()}"
 
+                # Ready if within 15 min before or up to 60 min after scheduled time
+                if -60 <= diff_minutes <= 15:
                     callable_appointments.append({
                         "appointment_id": appt["id"],
                         "appointment_date": appt["appointment_date"],
                         "time_slot": appt["time_slot"],
                         "reason": appt.get("reason"),
-                        "dentist_name": dentist_name,
+                        "dentist_name": clean_dentist_name,
                         "room_code": room_code,
                         "status": "ready",
+                        "diff_minutes": int(diff_minutes),
                     })
                 elif diff_minutes > 15:
-                    # Upcoming but not yet callable
-                    dentist_res = supabase.table("users")\
-                        .select("full_name").eq("id", appt["admin_id"]).execute()
-                    dentist_name = dentist_res.data[0]["full_name"] if dentist_res.data else "Dentist"
-
+                    # Upcoming in the future
                     callable_appointments.append({
                         "appointment_id": appt["id"],
                         "appointment_date": appt["appointment_date"],
                         "time_slot": appt["time_slot"],
                         "reason": appt.get("reason"),
-                        "dentist_name": dentist_name,
-                        "room_code": None,
+                        "dentist_name": clean_dentist_name,
+                        "room_code": room_code,
                         "status": "upcoming",
                         "minutes_until": int(diff_minutes),
                     })
@@ -1592,35 +1764,65 @@ async def get_my_telehealth_call(user=Depends(get_current_user)):
 
 @app.get("/telehealth/dentist-calls")
 async def get_dentist_telehealth_calls(user=Depends(require_verified_dentist)):
-    """Dentist: Get today's approved/booked appointments for telehealth."""
+    """Dentist: Get today's and upcoming approved/booked appointments for telehealth."""
     try:
-        today = datetime.utcnow().strftime("%Y-%m-%d")
+        # Pakistan Standard Time (PKT) = UTC + 5 hours
+        now = datetime.utcnow() + timedelta(hours=5)
+        today = now.strftime("%Y-%m-%d")
+
         result = supabase.table("appointments")\
-            .select("*, patients(full_name)")\
+            .select("*")\
             .eq("admin_id", user["user_id"])\
-            .eq("appointment_date", today)\
+            .gte("appointment_date", today)\
             .in_("status", ["approved", "booked"])\
+            .order("appointment_date", desc=False)\
             .execute()
 
         calls = []
         for appt in result.data:
             patient_name = "Patient"
-            if appt.get("patients") and appt["patients"].get("full_name"):
-                patient_name = appt["patients"]["full_name"]
-            else:
+            if appt.get("patient_id"):
                 p_res = supabase.table("users")\
                     .select("full_name").eq("id", appt["patient_id"]).execute()
-                if p_res.data:
+                if p_res.data and p_res.data[0].get("full_name"):
                     patient_name = p_res.data[0]["full_name"]
+                else:
+                    p_res2 = supabase.table("patients")\
+                        .select("full_name").eq("id", appt["patient_id"]).execute()
+                    if p_res2.data and p_res2.data[0].get("full_name"):
+                        patient_name = p_res2.data[0]["full_name"]
 
             room_code = f"DS-APPT-{appt['id'][:8].upper()}"
+
+            # Calculate time difference
+            status = "upcoming"
+            minutes_until = None
+            try:
+                appt_date = datetime.strptime(appt["appointment_date"], "%Y-%m-%d")
+                appt_time = datetime.strptime(appt["time_slot"][:5], "%H:%M").time()
+                appt_datetime = datetime.combine(appt_date.date(), appt_time)
+                diff_minutes = (appt_datetime - now).total_seconds() / 60
+
+                if -60 <= diff_minutes <= 15:
+                    status = "ready"
+                elif diff_minutes > 15:
+                    status = "upcoming"
+                    minutes_until = int(diff_minutes)
+                else:
+                    status = "past"
+            except Exception:
+                status = "ready"
+
             calls.append({
                 "appointment_id": appt["id"],
                 "patient_name": patient_name,
+                "appointment_date": appt["appointment_date"],
                 "time_slot": appt["time_slot"],
                 "reason": appt.get("reason"),
                 "room_code": room_code,
-                "status": appt["status"],
+                "status": status,
+                "minutes_until": minutes_until,
+                "booking_type": appt.get("booking_type", "online"),
             })
 
         return calls

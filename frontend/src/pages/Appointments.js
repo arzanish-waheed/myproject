@@ -93,6 +93,7 @@ export default function Appointments() {
     const [altModal, setAltModal] = useState(false);
     const [altForm, setAltForm] = useState({ appointment_id: '', date: '', time: '', message: '' });
     const [availForm, setAvailForm] = useState({ day_of_week: 'Monday', start_time: '09:00', end_time: '17:00', slot_duration: 30 });
+    const [allFilter, setAllFilter] = useState('upcoming'); // 'upcoming' or 'past'
 
     const [toast, setToast] = useState(null);
     const showToast = (msg, type = 'success') => setToast({ message: msg, type });
@@ -169,7 +170,9 @@ export default function Appointments() {
             return;
         }
         
-        const dayOfWeekIndex = new Date(selectedDate).getDay();
+        // Parse date components locally to avoid timezone date shifts
+        const parts = selectedDate.split('-');
+        const dayOfWeekIndex = new Date(Number(parts[0]), Number(parts[1]) - 1, Number(parts[2])).getDay();
         const dayStr = dayMap[dayOfWeekIndex];
         setSlotError('');
         setBookedSlots([]);
@@ -185,34 +188,37 @@ export default function Appointments() {
 
         setBookForm(prev => ({ ...prev, date: selectedDate, time: '' }));
         
-        // Generate time slots
+        // Generate time slots (strictly 30-min interval, 30 min per appointment)
         const slots = [];
         let currTime = new Date(`1970-01-01T${dayAvail.start_time}`);
         const endTime = new Date(`1970-01-01T${dayAvail.end_time}`);
-        const duration = dayAvail.slot_duration || 30;
+        const duration = 30; // 30 minutes duration
 
         while (currTime < endTime) {
             slots.push(currTime.toTimeString().substring(0, 5));
             currTime.setMinutes(currTime.getMinutes() + duration);
         }
-        setAvailableSlots(slots);
 
         // Fetch already booked slots for this dentist on this date
         try {
             const res = await API.get(`/appointments/booked-slots?dentist_id=${bookForm.dentist_id}&date=${selectedDate}`);
-            setBookedSlots(res.data.booked_slots || []);
+            const booked = res.data.booked_slots || [];
+            setBookedSlots(booked);
+            // Hide booked slots completely as requested ("wo slot na show ho")
+            const openSlots = slots.filter(s => !booked.includes(s));
+            setAvailableSlots(openSlots);
+            if (openSlots.length === 0) {
+                setSlotError('All 30-min slots for this date are already booked. Please choose another date.');
+            }
         } catch (err) {
             console.error('Failed to fetch booked slots:', err);
+            setAvailableSlots(slots);
         }
     };
 
     const handleTimeSelect = (slot) => {
-        if (bookedSlots.includes(slot)) {
-            setSlotError('This time slot is already booked by another patient. Please select a different time.');
-            return;
-        }
         setSlotError('');
-        setBookForm({...bookForm, time: slot});
+        setBookForm(prev => ({ ...prev, time: slot }));
     };
 
     const submitBooking = async () => {
@@ -271,9 +277,20 @@ export default function Appointments() {
             // Convert day name to int for backend (0=Sunday...6=Saturday)
             const dayIndex = dayMap.indexOf(availForm.day_of_week);
             if (dayIndex === -1) return showToast('Invalid day selected.', 'error');
+            
             // Ensure time has seconds for Supabase time column
-            const startTime = availForm.start_time.length === 5 ? availForm.start_time + ':00' : availForm.start_time;
-            const endTime = availForm.end_time.length === 5 ? availForm.end_time + ':00' : availForm.end_time;
+            let startTime = availForm.start_time.length === 5 ? availForm.start_time + ':00' : availForm.start_time;
+            let endTime = availForm.end_time.length === 5 ? availForm.end_time + ':00' : availForm.end_time;
+
+            // If user selected 12:00 AM (00:00:00) as end time for a late night slot (e.g. 11 PM to 12 AM), convert to 23:59:00
+            if ((endTime === '00:00:00' || endTime === '00:00') && startTime > '00:00:00') {
+                endTime = '23:59:00';
+            }
+
+            if (endTime <= startTime) {
+                return showToast('End time must be after start time (e.g. 09:00 AM to 05:00 PM).', 'error');
+            }
+
             await API.post('/availability', {
                 day_of_week: dayIndex,
                 start_time: startTime,
@@ -284,7 +301,14 @@ export default function Appointments() {
             fetchMyAvailability();
         } catch (err) {
             console.error('Availability error:', err?.response?.data || err);
-            showToast(err?.response?.data?.detail || 'Failed to add availability.', 'error');
+            let detail = err?.response?.data?.detail;
+            if (typeof detail === 'object') {
+                detail = detail.message || JSON.stringify(detail);
+            }
+            if (detail && detail.includes('valid_time_range')) {
+                detail = 'End time must be after start time.';
+            }
+            showToast(detail || 'Failed to add availability.', 'error');
         }
     };
 
@@ -306,6 +330,18 @@ export default function Appointments() {
             fetchAppointments();
         } catch (err) {
             showToast(err?.response?.data?.detail || 'Failed to cancel.', 'error');
+        }
+    };
+
+    const deleteAppointment = async (apptId) => {
+        if (!window.confirm('Are you sure you want to delete this appointment record?')) return;
+        try {
+            await API.delete(`/appointments/${apptId}`);
+            showToast('Appointment deleted successfully.');
+            fetchAppointments();
+            fetchPendingCount();
+        } catch (err) {
+            showToast('Failed to delete appointment.', 'error');
         }
     };
 
@@ -502,32 +538,28 @@ export default function Appointments() {
                             {/* Available Time Slots Grid */}
                             {bookForm.date && availableSlots.length > 0 && (
                                 <>
-                                    <label style={{ fontSize: 12, color: '#94A3B8', marginBottom: 8, display: 'block', fontWeight: 600 }}>🕐 Available Slots {bookedSlots.length > 0 && <span style={{ color: '#F59E0B', fontWeight: 400 }}>(grey = already booked)</span>}</label>
+                                    <label style={{ fontSize: 12, color: '#94A3B8', marginBottom: 8, display: 'block', fontWeight: 600 }}>🕐 Available 30-Min Slots</label>
                                     <div style={{ display: 'flex', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
                                         {availableSlots.map(s => {
-                                            const isBooked = bookedSlots.includes(s);
                                             const isSelected = bookForm.time === s;
                                             return (
                                                 <motion.div 
                                                     key={s} 
-                                                    whileHover={!isBooked ? { scale: 1.05 } : {}}
-                                                    whileTap={!isBooked ? { scale: 0.95 } : {}}
+                                                    whileHover={{ scale: 1.05 }}
+                                                    whileTap={{ scale: 0.95 }}
                                                     onClick={() => handleTimeSelect(s)}
                                                     style={{ 
                                                         padding: '8px 14px', 
-                                                        background: isBooked ? 'rgba(239,68,68,0.08)' : isSelected ? '#0D9488' : 'rgba(255,255,255,0.05)', 
-                                                        color: isBooked ? '#64748B' : isSelected ? '#fff' : '#E2E8F0', 
+                                                        background: isSelected ? '#0D9488' : 'rgba(255,255,255,0.05)', 
+                                                        color: isSelected ? '#fff' : '#E2E8F0', 
                                                         borderRadius: 8, 
-                                                        cursor: isBooked ? 'not-allowed' : 'pointer', 
+                                                        cursor: 'pointer', 
                                                         fontSize: 13, fontWeight: 600,
-                                                        border: `1px solid ${isBooked ? 'rgba(239,68,68,0.2)' : isSelected ? '#0D9488' : 'rgba(255,255,255,0.06)'}`,
-                                                        opacity: isBooked ? 0.5 : 1,
-                                                        textDecoration: isBooked ? 'line-through' : 'none',
-                                                        position: 'relative',
+                                                        border: `1px solid ${isSelected ? '#0D9488' : 'rgba(255,255,255,0.08)'}`,
+                                                        boxShadow: isSelected ? '0 4px 15px rgba(13,148,136,0.3)' : 'none',
                                                     }}
                                                 >
                                                     {s}
-                                                    {isBooked && <span style={{ fontSize: 10, marginLeft: 4 }}>🔒</span>}
                                                 </motion.div>
                                             );
                                         })}
@@ -559,15 +591,57 @@ export default function Appointments() {
 
     const renderDentistView = () => {
         const pendingAppts = appointments.filter(a => a.status === 'pending');
+        const todayStr = new Date().toISOString().split('T')[0];
+        const upcomingAppts = appointments.filter(a => 
+            a.appointment_date >= todayStr && !['completed', 'cancelled', 'auto_cancelled', 'rejected'].includes(a.status)
+        );
+        const pastAppts = appointments.filter(a => 
+            a.appointment_date < todayStr || ['completed', 'cancelled', 'auto_cancelled', 'rejected'].includes(a.status)
+        );
+        const displayedAppts = allFilter === 'upcoming' ? upcomingAppts : pastAppts;
         
         return (
             <>
-                <div style={{ display: 'flex', gap: 20, marginBottom: 24, borderBottom: '1px solid rgba(255,255,255,0.1)' }}>
-                    <button style={dark.tab(activeTab === 'pending')} onClick={() => setActiveTab('pending')}>
-                        Pending Requests {pendingCount > 0 && <span style={{ background: '#EF4444', color: '#fff', padding: '2px 8px', borderRadius: 12, fontSize: 12, marginLeft: 8 }}>{pendingCount}</span>}
-                    </button>
-                    <button style={dark.tab(activeTab === 'all')} onClick={() => setActiveTab('all')}>All Appointments</button>
-                    <button style={dark.tab(activeTab === 'availability')} onClick={() => setActiveTab('availability')}>My Availability ⏰</button>
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 24, borderBottom: '1px solid rgba(255,255,255,0.1)', flexWrap: 'wrap', gap: 12 }}>
+                    <div style={{ display: 'flex', gap: 20 }}>
+                        <button style={dark.tab(activeTab === 'pending')} onClick={() => setActiveTab('pending')}>
+                            Pending Requests {pendingCount > 0 && <span style={{ background: '#EF4444', color: '#fff', padding: '2px 8px', borderRadius: 12, fontSize: 12, marginLeft: 8 }}>{pendingCount}</span>}
+                        </button>
+                        <button style={dark.tab(activeTab === 'all')} onClick={() => setActiveTab('all')}>All Appointments</button>
+                        <button style={dark.tab(activeTab === 'availability')} onClick={() => setActiveTab('availability')}>My Availability ⏰</button>
+                    </div>
+
+                    {/* Live Dentist Status Light */}
+                    <div style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        padding: '6px 14px', borderRadius: 20, fontSize: 12, fontWeight: 700,
+                        background: pendingCount > 0
+                            ? 'rgba(245,158,11,0.12)'
+                            : availability.length > 0
+                                ? 'rgba(16,185,129,0.12)'
+                                : 'rgba(239,68,68,0.12)',
+                        color: pendingCount > 0
+                            ? '#F59E0B'
+                            : availability.length > 0
+                                ? '#10B981'
+                                : '#EF4444',
+                        border: `1px solid ${
+                            pendingCount > 0
+                                ? 'rgba(245,158,11,0.35)'
+                                : availability.length > 0
+                                    ? 'rgba(16,185,129,0.35)'
+                                    : 'rgba(239,68,68,0.35)'
+                        }`
+                    }}>
+                        <span style={{
+                            width: 8, height: 8, borderRadius: '50%',
+                            background: pendingCount > 0 ? '#F59E0B' : availability.length > 0 ? '#10B981' : '#EF4444',
+                            boxShadow: `0 0 8px ${pendingCount > 0 ? '#F59E0B' : availability.length > 0 ? '#10B981' : '#EF4444'}`
+                        }} />
+                        <span>
+                            {pendingCount > 0 ? `🟡 Action Required (${pendingCount} Pending)` : availability.length > 0 ? '🟢 Online / Available' : '🔴 Offline (No Hours Set)'}
+                        </span>
+                    </div>
                 </div>
 
                 {activeTab === 'pending' && (
@@ -593,23 +667,76 @@ export default function Appointments() {
                 )}
 
                 {activeTab === 'all' && (
-                    <div style={dark.table}>
-                        <div style={dark.thead}>
-                            <span>Patient</span><span>Date</span><span>Time</span><span>Reason</span><span>Status</span>
+                    <div>
+                        {/* Sub-tabs: Upcoming vs Past Appointments */}
+                        <div style={{ display: 'flex', gap: 10, marginBottom: 18 }}>
+                            <button
+                                style={{
+                                    padding: '9px 18px', borderRadius: 8, cursor: 'pointer',
+                                    fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                                    background: allFilter === 'upcoming' ? 'rgba(13,148,136,0.18)' : 'rgba(255,255,255,0.03)',
+                                    color: allFilter === 'upcoming' ? '#14B8A6' : '#94A3B8',
+                                    border: `1px solid ${allFilter === 'upcoming' ? 'rgba(13,148,136,0.45)' : 'rgba(255,255,255,0.08)'}`,
+                                    transition: 'all 0.2s'
+                                }}
+                                onClick={() => setAllFilter('upcoming')}
+                            >
+                                📅 Upcoming Appointments ({upcomingAppts.length})
+                            </button>
+                            <button
+                                style={{
+                                    padding: '9px 18px', borderRadius: 8, cursor: 'pointer',
+                                    fontSize: 13, fontWeight: 700, fontFamily: 'inherit',
+                                    background: allFilter === 'past' ? 'rgba(13,148,136,0.18)' : 'rgba(255,255,255,0.03)',
+                                    color: allFilter === 'past' ? '#14B8A6' : '#94A3B8',
+                                    border: `1px solid ${allFilter === 'past' ? 'rgba(13,148,136,0.45)' : 'rgba(255,255,255,0.08)'}`,
+                                    transition: 'all 0.2s'
+                                }}
+                                onClick={() => setAllFilter('past')}
+                            >
+                                📜 Past Appointments ({pastAppts.length})
+                            </button>
                         </div>
-                        {appointments.length === 0 ? (
-                            <div style={{ padding: 40, textAlign: 'center', color: '#475569' }}>No appointments found.</div>
-                        ) : (
-                            appointments.map(a => (
-                                <div key={a.id} style={dark.trow}>
-                                    <span style={{ fontWeight: 600, color: '#fff' }}>{a.patients?.full_name || '—'}</span>
-                                    <span style={{ color: '#E2E8F0' }}>{a.appointment_date}</span>
-                                    <span style={{ color: '#E2E8F0' }}>{a.time_slot}</span>
-                                    <span style={{ color: '#94A3B8' }}>{a.reason || '—'}</span>
-                                    <div>{getStatusBadge(a.status)}</div>
+
+                        <div style={dark.table}>
+                            <div style={{ ...dark.thead, gridTemplateColumns: '1.4fr 1fr 1fr 2fr 1.2fr 0.8fr' }}>
+                                <span>Patient</span>
+                                <span>Date</span>
+                                <span>Time</span>
+                                <span>Reason</span>
+                                <span>Status</span>
+                                <span>Action</span>
+                            </div>
+                            {displayedAppts.length === 0 ? (
+                                <div style={{ padding: 40, textAlign: 'center', color: '#64748B' }}>
+                                    {allFilter === 'upcoming' ? 'No upcoming appointments scheduled.' : 'No past appointments found.'}
                                 </div>
-                            ))
-                        )}
+                            ) : (
+                                displayedAppts.map(a => (
+                                    <div key={a.id} style={{ ...dark.trow, gridTemplateColumns: '1.4fr 1fr 1fr 2fr 1.2fr 0.8fr' }}>
+                                        <span style={{ fontWeight: 600, color: '#fff' }}>{a.patients?.full_name || '—'}</span>
+                                        <span style={{ color: '#E2E8F0' }}>{a.appointment_date}</span>
+                                        <span style={{ color: '#E2E8F0' }}>{a.time_slot}</span>
+                                        <span style={{ color: '#94A3B8' }}>{a.reason || '—'}</span>
+                                        <div>{getStatusBadge(a.status)}</div>
+                                        <div>
+                                            <motion.button
+                                                whileHover={{ scale: 1.08 }} whileTap={{ scale: 0.92 }}
+                                                onClick={() => deleteAppointment(a.id)}
+                                                style={{
+                                                    background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.25)',
+                                                    color: '#EF4444', padding: '6px 12px', borderRadius: 6,
+                                                    cursor: 'pointer', fontSize: 12, fontWeight: 600, fontFamily: 'inherit'
+                                                }}
+                                                title="Delete this appointment"
+                                            >
+                                                🗑️ Del
+                                            </motion.button>
+                                        </div>
+                                    </div>
+                                ))
+                            )}
+                        </div>
                     </div>
                 )}
 
@@ -640,7 +767,19 @@ export default function Appointments() {
                         </div>
 
                         <div style={dark.card}>
-                            <h3 style={{ color: '#fff', marginTop: 0, marginBottom: 16 }}>Current Availability</h3>
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                                <h3 style={{ color: '#fff', margin: 0 }}>Current Availability</h3>
+                                <div style={{
+                                    display: 'flex', alignItems: 'center', gap: 6,
+                                    padding: '4px 10px', borderRadius: 20, fontSize: 11, fontWeight: 700,
+                                    background: availability.length > 0 ? 'rgba(16,185,129,0.12)' : 'rgba(239,68,68,0.12)',
+                                    color: availability.length > 0 ? '#10B981' : '#EF4444',
+                                    border: `1px solid ${availability.length > 0 ? 'rgba(16,185,129,0.3)' : 'rgba(239,68,68,0.3)'}`
+                                }}>
+                                    <span style={{ width: 7, height: 7, borderRadius: '50%', background: availability.length > 0 ? '#10B981' : '#EF4444', boxShadow: `0 0 6px ${availability.length > 0 ? '#10B981' : '#EF4444'}` }} />
+                                    <span>{availability.length > 0 ? '🟢 Online' : '🔴 Offline'}</span>
+                                </div>
+                            </div>
                             <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
                                 {availability.length === 0 ? (
                                     <div style={{ color: '#475569', fontSize: 14 }}>No availability set.</div>

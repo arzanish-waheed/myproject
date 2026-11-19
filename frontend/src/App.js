@@ -20,6 +20,17 @@ function PrivateRoute({ children }) {
     return token ? children : <Navigate to="/home" />;
 }
 
+function VerifiedDentistRoute({ children }) {
+    const token = localStorage.getItem('token');
+    if (!token) return <Navigate to="/home" />;
+    const user = JSON.parse(localStorage.getItem('user') || '{}');
+    const isDentist = user.role === 'admin' || user.role === 'dentist' || (user.role && user.role !== 'patient');
+    if (isDentist && !user.is_verified) {
+        return <Navigate to="/" replace />;
+    }
+    return children;
+}
+
 function App() {
     return (
         <ThemeProvider>
@@ -29,12 +40,12 @@ function App() {
                     <Route path="/home" element={<LandingPage />} />
                     <Route path="/login" element={<Login />} />
                     <Route path="/" element={<PrivateRoute><Dashboard /></PrivateRoute>} />
-                    <Route path="/patients" element={<PrivateRoute><Patients /></PrivateRoute>} />
-                    <Route path="/analysis" element={<PrivateRoute><AIAnalysis /></PrivateRoute>} />
-                    <Route path="/appointments" element={<PrivateRoute><Appointments /></PrivateRoute>} />
-                    <Route path="/reports" element={<PrivateRoute><Reports /></PrivateRoute>} />
-                    <Route path="/telehealth" element={<PrivateRoute><Telehealth /></PrivateRoute>} />
-                    <Route path="/chat" element={<PrivateRoute><Chat /></PrivateRoute>} />
+                    <Route path="/patients" element={<VerifiedDentistRoute><Patients /></VerifiedDentistRoute>} />
+                    <Route path="/analysis" element={<VerifiedDentistRoute><AIAnalysis /></VerifiedDentistRoute>} />
+                    <Route path="/appointments" element={<VerifiedDentistRoute><Appointments /></VerifiedDentistRoute>} />
+                    <Route path="/reports" element={<VerifiedDentistRoute><Reports /></VerifiedDentistRoute>} />
+                    <Route path="/telehealth" element={<VerifiedDentistRoute><Telehealth /></VerifiedDentistRoute>} />
+                    <Route path="/chat" element={<VerifiedDentistRoute><Chat /></VerifiedDentistRoute>} />
                     <Route path="/premium" element={<PrivateRoute><Premium /></PrivateRoute>} />
                     <Route path="/superadmin" element={<SuperAdmin />} />
                     <Route path="/payment-admin" element={<PaymentAdmin />} />

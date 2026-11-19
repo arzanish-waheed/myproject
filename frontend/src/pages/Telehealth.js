@@ -38,23 +38,23 @@ const PremiumPaywall = ({ onPurchaseSuccess, onOpenPolicies }) => {
     const plans = [
         {
             id: 'one_time',
-            name: 'One-Time Access',
+            name: 'One-Time Session',
             price: 999,
             priceLabel: 'PKR 999',
-            desc: 'Lifetime telehealth access',
-            features: ['Unlimited video calls', 'Unlimited audio calls', 'Screen sharing', 'HD quality', '1-Hour 100% money-back guarantee'],
-            badge: 'BEST VALUE',
+            desc: 'Single session · Expires immediately after use',
+            features: ['1 Tele-Health Video Consultation', 'Expires immediately after use', 'Screen sharing & HD quality', 'Direct Doctor Video Room', 'Single session pass'],
+            badge: 'SINGLE USE',
             badgeColor: '#10B981',
             icon: '💎',
         },
         {
             id: 'monthly',
-            name: 'Monthly Plan',
+            name: 'Monthly Plan (30 Days)',
             price: 2499,
-            priceLabel: 'PKR 2,499',
-            desc: 'Per month, cancel anytime',
-            features: ['Unlimited video calls', 'Unlimited audio calls', 'Screen sharing', 'HD quality', '48-Hour full refund guarantee'],
-            badge: 'POPULAR',
+            priceLabel: 'PKR 2,499 / 30 Days',
+            desc: '30 Days Full Validity (1 Month)',
+            features: ['Full 30 Days Validity (1 Month)', 'Unlimited video calls for 30 days', 'Screen sharing & HD quality', 'Priority Doctor Queue', '48-Hour full refund guarantee'],
+            badge: '1 MONTH',
             badgeColor: '#F59E0B',
             icon: '⭐',
         },
@@ -1007,6 +1007,16 @@ export default function Telehealth() {
 
         setInCall(false);
         setCallEnded(true);
+
+        // One-time plan expires immediately after use
+        if (!isDentist && premiumInfo?.plan_type === 'one_time') {
+            API.post('/premium/consume-one-time')
+                .then(() => {
+                    setIsPremium(false);
+                    setPremiumInfo(null);
+                })
+                .catch(err => console.error('Failed to consume one-time premium:', err));
+        }
     };
 
     const copyRoomCode = (code) => {
@@ -1225,7 +1235,7 @@ export default function Telehealth() {
                                                         <div>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 6 }}>
                                                                 <span style={{ color: '#E2E8F0', fontWeight: 700, fontSize: 15 }}>
-                                                                    Dr. {call.dentist_name}
+                                                                    {call.dentist_name?.startsWith('Dr.') ? call.dentist_name : `Dr. ${call.dentist_name}`}
                                                                 </span>
                                                                 {call.status === 'ready' && (
                                                                     <motion.div
@@ -1245,7 +1255,7 @@ export default function Telehealth() {
                                                             </div>
                                                             {call.status === 'upcoming' && (
                                                                 <div style={{ color: '#F59E0B', fontSize: 12, marginTop: 4 }}>
-                                                                    ⏳ Starts in {call.minutes_until} minutes
+                                                                    ⏳ Starts in {call.minutes_until > 60 ? `${Math.floor(call.minutes_until / 60)}h ${call.minutes_until % 60}m` : `${call.minutes_until} minutes`}
                                                                 </div>
                                                             )}
                                                         </div>
@@ -1308,8 +1318,8 @@ export default function Telehealth() {
                                                 display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 22
                                             }}>📞</div>
                                             <div>
-                                                <div style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Today's Consultations</div>
-                                                <div style={{ color: '#64748B', fontSize: 12 }}>Approved appointments for today</div>
+                                                <div style={{ color: '#fff', fontWeight: 700, fontSize: 16 }}>Upcoming Consultations</div>
+                                                <div style={{ color: '#64748B', fontSize: 12 }}>Approved & scheduled telehealth video appointments</div>
                                             </div>
                                         </div>
                                         <motion.button
@@ -1326,9 +1336,9 @@ export default function Telehealth() {
                                             border: '1px dashed rgba(255,255,255,0.08)',
                                         }}>
                                             <div style={{ fontSize: 40, marginBottom: 12, opacity: 0.5 }}>📭</div>
-                                            <div style={{ color: '#94A3B8', fontSize: 14, marginBottom: 4 }}>No consultations scheduled for today</div>
+                                            <div style={{ color: '#94A3B8', fontSize: 14, marginBottom: 4 }}>No consultations scheduled</div>
                                             <div style={{ color: '#475569', fontSize: 12 }}>
-                                                Approved appointments for today will appear here
+                                                Approved online consultations will appear here automatically
                                             </div>
                                         </div>
                                     ) : (
@@ -1338,18 +1348,33 @@ export default function Telehealth() {
                                                     key={call.appointment_id}
                                                     initial={{ opacity: 0, x: -20 }} animate={{ opacity: 1, x: 0 }}
                                                     style={{
-                                                        background: 'rgba(13,148,136,0.06)',
-                                                        border: '1px solid rgba(13,148,136,0.2)',
+                                                        background: call.status === 'ready' ? 'rgba(13,148,136,0.1)' : 'rgba(13,148,136,0.04)',
+                                                        border: call.status === 'ready' ? '1px solid rgba(13,148,136,0.35)' : '1px solid rgba(13,148,136,0.15)',
                                                         borderRadius: 12, padding: 20,
                                                     }}
                                                 >
                                                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                                                         <div>
-                                                            <div style={{ color: '#E2E8F0', fontWeight: 700, fontSize: 15, marginBottom: 4 }}>
-                                                                {call.patient_name}
+                                                            <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 4 }}>
+                                                                <span style={{ color: '#E2E8F0', fontWeight: 700, fontSize: 15 }}>
+                                                                    {call.patient_name}
+                                                                </span>
+                                                                {call.status === 'ready' ? (
+                                                                    <span style={{
+                                                                        background: '#10B981', color: '#fff',
+                                                                        fontSize: 10, fontWeight: 700,
+                                                                        padding: '2px 8px', borderRadius: 10,
+                                                                    }}>LIVE NOW</span>
+                                                                ) : (
+                                                                    <span style={{
+                                                                        background: 'rgba(245,158,11,0.12)', color: '#F59E0B',
+                                                                        fontSize: 10, fontWeight: 700,
+                                                                        padding: '2px 8px', borderRadius: 10,
+                                                                    }}>UPCOMING</span>
+                                                                )}
                                                             </div>
                                                             <div style={{ color: '#94A3B8', fontSize: 13 }}>
-                                                                ⏰ {call.time_slot} {call.reason && `· ${call.reason}`}
+                                                                📅 {call.appointment_date} · ⏰ {call.time_slot} {call.reason && `· ${call.reason}`}
                                                             </div>
                                                             <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginTop: 8 }}>
                                                                 <span style={{ color: '#64748B', fontSize: 11 }}>Room:</span>

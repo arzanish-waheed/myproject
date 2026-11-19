@@ -33,11 +33,17 @@ export default function Navbar() {
     const [saving, setSaving]           = useState(false);
     const [saveMsg, setSaveMsg]         = useState('');
     const [pendingCount, setPendingCount] = useState(0);
+    const [hasAvailability, setHasAvailability] = useState(false);
+    const [notifications, setNotifications]     = useState([]);
+    const [notifOpen, setNotifOpen]             = useState(false);
     const dropdownRef = useRef(null);
+    const notifRef    = useRef(null);
     const picRef      = useRef(null);
 
     const [user, setUser] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
     const isDentist = user.role === 'admin' || user.role === 'dentist' || (user.role && user.role !== 'patient');
+    const [isVerified, setIsVerified]   = useState(user.is_verified ?? false);
+    const [lockModalOpen, setLockModalOpen] = useState(false);
     const links = isDentist ? allLinks : patientLinks;
 
     // Settings form
@@ -55,23 +61,54 @@ export default function Navbar() {
 
     useEffect(() => {
         if (isDentist) {
-            const fetchPendingCount = async () => {
+            // Live verification check
+            API.get('/me')
+                .then(r => {
+                    const verified = !!r.data.is_verified;
+                    setIsVerified(verified);
+                    const updatedUser = { ...user, is_verified: verified };
+                    localStorage.setItem('user', JSON.stringify(updatedUser));
+                })
+                .catch(() => {});
+
+            const fetchDentistData = async () => {
                 try {
-                    const res = await API.get('/appointments/pending-count');
-                    setPendingCount(res.data.count);
+                    const [pRes, aRes] = await Promise.all([
+                        API.get('/appointments/pending-count'),
+                        API.get('/availability')
+                    ]);
+                    setPendingCount(pRes.data.count);
+                    setHasAvailability(aRes.data && aRes.data.length > 0);
                 } catch (err) {}
             };
-            fetchPendingCount();
-            const interval = setInterval(fetchPendingCount, 30000);
+            fetchDentistData();
+            const interval = setInterval(fetchDentistData, 30000);
             return () => clearInterval(interval);
         }
     }, [isDentist]);
 
-    // Dropdown bahar click pe band karo
+    // Notifications polling & 10-min appointment auto-cancel
+    useEffect(() => {
+        const fetchNotifs = async () => {
+            try {
+                await API.post('/appointments/auto-cancel').catch(() => {});
+                const res = await API.get('/notifications');
+                setNotifications(res.data || []);
+            } catch (err) {}
+        };
+        fetchNotifs();
+        const interval = setInterval(fetchNotifs, 20000);
+        return () => clearInterval(interval);
+    }, []);
+
+    // Dropdown & Notifications outside click handling
     useEffect(() => {
         const handleClick = (e) => {
             if (dropdownRef.current && !dropdownRef.current.contains(e.target)) {
                 setDropdown(false);
+            }
+            if (notifRef.current && !notifRef.current.contains(e.target)) {
+                setNotifOpen(false);
             }
         };
         document.addEventListener('mousedown', handleClick);
@@ -160,19 +197,47 @@ export default function Navbar() {
             <div style={styles.links}>
                 {links.map((l, i) => {
                     const active = location.pathname === l.path;
+                    const isLocked = isDentist && !isVerified && l.path !== '/';
                     return (
                         <motion.button key={l.path}
-                            style={{ ...styles.link, color: active ? '#14B8A6' : (isDark ? '#94A3B8' : '#475569') }}
-                            onClick={() => navigate(l.path)}
-                            whileHover={{ color: '#14B8A6', y: -1 }}
-                            whileTap={{ scale: 0.95 }}
+                            style={{
+                                ...styles.link,
+                                color: active ? '#14B8A6' : (isDark ? '#94A3B8' : '#475569'),
+                                opacity: isLocked ? 0.6 : 1,
+                                cursor: isLocked ? 'not-allowed' : 'pointer'
+                            }}
+                            onClick={() => {
+                                if (isLocked) {
+                                    setLockModalOpen(true);
+                                    return;
+                                }
+                                navigate(l.path);
+                            }}
+                            whileHover={isLocked ? {} : { color: '#14B8A6', y: -1 }}
+                            whileTap={isLocked ? {} : { scale: 0.95 }}
                             initial={{ opacity: 0, y: -20 }}
                             animate={{ opacity: 1, y: 0 }}
                             transition={{ delay: i * 0.07 }}
+                            title={isLocked ? 'Feature locked — SuperAdmin verification required' : ''}
                         >
-                            <span style={{ marginRight: 6, fontSize: 14 }}>{l.icon}</span>
+                            <span style={{ marginRight: 6, fontSize: 14 }}>{isLocked ? '🔒' : l.icon}</span>
                             {l.label}
-                            {l.path === '/appointments' && pendingCount > 0 && (
+                            {isLocked && (
+                                <span style={{
+                                    marginLeft: 6,
+                                    fontSize: 9,
+                                    fontWeight: 700,
+                                    background: 'rgba(239, 68, 68, 0.15)',
+                                    color: '#EF4444',
+                                    border: '1px solid rgba(239, 68, 68, 0.3)',
+                                    borderRadius: 4,
+                                    padding: '1px 4px',
+                                    letterSpacing: 0.5
+                                }}>
+                                    LOCKED
+                                </span>
+                            )}
+                            {l.path === '/appointments' && !isLocked && pendingCount > 0 && (
                                 <motion.div
                                     animate={{ scale: [1, 1.2, 1] }}
                                     transition={{ repeat: Infinity, duration: 2 }}
@@ -283,6 +348,147 @@ export default function Navbar() {
                 </motion.div>
             </motion.button>
 
+            {/* ── Dentist Status Indicator (Online Green / Offline Red / Pending Yellow) ── */}
+            {isDentist && (
+                <motion.div
+                    whileHover={{ scale: 1.04 }}
+                    whileTap={{ scale: 0.96 }}
+                    onClick={() => navigate('/appointments')}
+                    style={{
+                        display: 'flex', alignItems: 'center', gap: 6,
+                        background: pendingCount > 0
+                            ? 'rgba(245,158,11,0.12)'
+                            : hasAvailability
+                                ? 'rgba(16,185,129,0.12)'
+                                : 'rgba(239,68,68,0.12)',
+                        border: `1px solid ${
+                            pendingCount > 0
+                                ? 'rgba(245,158,11,0.35)'
+                                : hasAvailability
+                                    ? 'rgba(16,185,129,0.35)'
+                                    : 'rgba(239,68,68,0.35)'
+                        }`,
+                        color: pendingCount > 0
+                            ? '#F59E0B'
+                            : hasAvailability
+                                ? '#10B981'
+                                : '#EF4444',
+                        padding: '4px 11px', borderRadius: 20,
+                        fontSize: 11, fontWeight: 700, cursor: 'pointer',
+                        marginRight: 10, userSelect: 'none',
+                    }}
+                    title={
+                        pendingCount > 0
+                            ? `${pendingCount} appointment request(s) awaiting your action`
+                            : hasAvailability
+                                ? 'Online — Availability is active'
+                                : 'Offline — Set availability in Appointments'
+                    }
+                >
+                    <motion.span
+                        animate={{ scale: [1, 1.3, 1], opacity: [1, 0.7, 1] }}
+                        transition={{ repeat: Infinity, duration: 2 }}
+                        style={{
+                            width: 8, height: 8, borderRadius: '50%',
+                            background: pendingCount > 0 ? '#F59E0B' : hasAvailability ? '#10B981' : '#EF4444',
+                            boxShadow: `0 0 8px ${pendingCount > 0 ? '#F59E0B' : hasAvailability ? '#10B981' : '#EF4444'}`,
+                            display: 'inline-block'
+                        }}
+                    />
+                    <span>
+                        {pendingCount > 0 ? `Pending (${pendingCount})` : hasAvailability ? 'Online' : 'Offline'}
+                    </span>
+                </motion.div>
+            )}
+
+            {/* ── Notifications Bell & Dropdown ── */}
+            <div style={{ position: 'relative', marginRight: 10 }} ref={notifRef}>
+                <motion.button
+                    onClick={() => setNotifOpen(o => !o)}
+                    whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}
+                    style={{
+                        background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                        border: isDark ? '1px solid rgba(255,255,255,0.12)' : '1px solid rgba(0,0,0,0.12)',
+                        borderRadius: 10, width: 34, height: 34,
+                        display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        cursor: 'pointer', fontSize: 15, color: '#E2E8F0', position: 'relative'
+                    }}
+                    title="Notifications"
+                >
+                    🔔
+                    {notifications.length > 0 && (
+                        <span style={{
+                            position: 'absolute', top: -3, right: -3,
+                            width: 15, height: 15, borderRadius: '50%',
+                            background: '#EF4444', color: '#fff',
+                            fontSize: 9, fontWeight: 800,
+                            display: 'flex', alignItems: 'center', justifyContent: 'center'
+                        }}>
+                            {notifications.length > 9 ? '9+' : notifications.length}
+                        </span>
+                    )}
+                </motion.button>
+
+                <AnimatePresence>
+                    {notifOpen && (
+                        <motion.div
+                            initial={{ opacity: 0, y: 10, scale: 0.95 }}
+                            animate={{ opacity: 1, y: 0, scale: 1 }}
+                            exit={{ opacity: 0, y: 10, scale: 0.95 }}
+                            style={{
+                                position: 'absolute', right: 0, top: 42, width: 320,
+                                background: isDark ? '#0F1928' : '#FFFFFF',
+                                border: '1px solid rgba(13,148,136,0.25)',
+                                borderRadius: 14, boxShadow: '0 20px 50px rgba(0,0,0,0.4)',
+                                padding: 14, zIndex: 1000
+                            }}
+                        >
+                            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10, borderBottom: '1px solid rgba(255,255,255,0.06)', paddingBottom: 6 }}>
+                                <div style={{ fontWeight: 800, fontSize: 13, color: isDark ? '#fff' : '#0F172A' }}>
+                                    🔔 Notifications
+                                </div>
+                                {notifications.length > 0 && (
+                                    <button
+                                        onClick={() => setNotifications([])}
+                                        style={{ background: 'none', border: 'none', color: '#64748B', fontSize: 11, cursor: 'pointer' }}
+                                    >
+                                        Clear all
+                                    </button>
+                                )}
+                            </div>
+
+                            <div style={{ maxHeight: 280, overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: 8 }}>
+                                {notifications.length === 0 ? (
+                                    <div style={{ textAlign: 'center', padding: '20px 0', color: '#64748B', fontSize: 12 }}>
+                                        No new notifications
+                                    </div>
+                                ) : (
+                                    notifications.map((n) => (
+                                        <div key={n.id} style={{
+                                            padding: '8px 10px', borderRadius: 8,
+                                            background: n.type === 'error' ? 'rgba(239,68,68,0.08)' : n.type === 'warning' ? 'rgba(245,158,11,0.08)' : 'rgba(13,148,136,0.08)',
+                                            border: `1px solid ${n.type === 'error' ? 'rgba(239,68,68,0.2)' : n.type === 'warning' ? 'rgba(245,158,11,0.2)' : 'rgba(13,148,136,0.2)'}`,
+                                        }}>
+                                            <div style={{
+                                                fontSize: 11, fontWeight: 700,
+                                                color: n.type === 'error' ? '#EF4444' : n.type === 'warning' ? '#F59E0B' : '#14B8A6',
+                                                marginBottom: 2
+                                            }}>
+                                                {n.type === 'error' ? '⚠️ ' : n.type === 'warning' ? '⏰ ' : '✓ '}
+                                                {n.title}
+                                            </div>
+                                            <div style={{ fontSize: 11, color: isDark ? '#CBD5E1' : '#334155', lineHeight: 1.4 }}>
+                                                {n.message}
+                                            </div>
+                                        </div>
+                                    ))
+                                )}
+                            </div>
+                        </motion.div>
+                    )}
+                </AnimatePresence>
+            </div>
+
             {/* User Area */}
             <div style={{ position: 'relative' }} ref={dropdownRef}>
                 <motion.div
@@ -361,12 +567,25 @@ export default function Navbar() {
 
                                 {/* Chat — sirf admin */}
                                 {user.role === 'admin' && (
-                                    <motion.button style={{...styles.menuItem, color: isDark ? '#94A3B8' : '#475569'}}
-                                        onClick={() => { navigate('/chat'); setDropdown(false); }}
+                                    <motion.button style={{
+                                        ...styles.menuItem,
+                                        color: !isVerified ? '#94A3B8' : (isDark ? '#94A3B8' : '#475569'),
+                                        opacity: !isVerified ? 0.6 : 1,
+                                        cursor: !isVerified ? 'not-allowed' : 'pointer'
+                                    }}
+                                        onClick={() => {
+                                            if (!isVerified) {
+                                                setLockModalOpen(true);
+                                                setDropdown(false);
+                                                return;
+                                            }
+                                            navigate('/chat');
+                                            setDropdown(false);
+                                        }}
                                         whileHover={{ background: 'rgba(124,58,237,0.1)', color: '#A78BFA' }}
                                     >
-                                        <span style={{ fontSize: 15 }}>🤖</span>
-                                        <span>AI Assistant</span>
+                                        <span style={{ fontSize: 15 }}>{!isVerified ? '🔒' : '🤖'}</span>
+                                        <span>AI Assistant {!isVerified ? '(Locked)' : ''}</span>
                                     </motion.button>
                                 )}
 
@@ -381,7 +600,8 @@ export default function Navbar() {
                                     </motion.button>
                                 )}
 
-                                {/* Policies */}
+                                {/* Policies — sirf patient ke liye, dentist ko ni chahiye */}
+                                {!isDentist && (
                                 <motion.button style={{...styles.menuItem, color: isDark ? '#94A3B8' : '#475569'}}
                                     onClick={() => { setPolicyOpen(true); setDropdown(false); }}
                                     whileHover={{ background: 'rgba(13,148,136,0.1)', color: '#14B8A6' }}
@@ -389,6 +609,7 @@ export default function Navbar() {
                                     <span style={{ fontSize: 15 }}>📜</span>
                                     <span>Refund & Policies</span>
                                 </motion.button>
+                                )}
 
                                 {/* Divider */}
                                 <div style={{ height: 1, background: 'rgba(255,255,255,0.06)', margin: '6px 0' }} />
@@ -560,6 +781,82 @@ export default function Navbar() {
                 </motion.div>
             )}
         </AnimatePresence>
+        {/* ── Feature Lock Modal for Unverified Dentists ── */}
+        <AnimatePresence>
+            {lockModalOpen && (
+                <motion.div
+                    style={styles.overlay}
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0 }}
+                    onClick={() => setLockModalOpen(false)}
+                >
+                    <motion.div
+                        style={{
+                            ...styles.modal,
+                            background: isDark ? '#0F1928' : '#FFFFFF',
+                            border: '1px solid rgba(245,158,11,0.3)',
+                            maxWidth: 440,
+                            textAlign: 'center',
+                            padding: '32px 28px',
+                            boxShadow: '0 20px 60px rgba(0,0,0,0.5)'
+                        }}
+                        initial={{ opacity: 0, scale: 0.94, y: 20 }}
+                        animate={{ opacity: 1, scale: 1, y: 0 }}
+                        exit={{ opacity: 0, scale: 0.94, y: 20 }}
+                        transition={{ duration: 0.2 }}
+                        onClick={e => e.stopPropagation()}
+                    >
+                        <div style={{
+                            width: 64, height: 64, borderRadius: '50%',
+                            background: 'rgba(245,158,11,0.12)', color: '#F59E0B',
+                            display: 'flex', alignItems: 'center', justifyContent: 'center',
+                            fontSize: 30, margin: '0 auto 16px',
+                            border: '1px solid rgba(245,158,11,0.25)'
+                        }}>
+                            🔒
+                        </div>
+
+                        <h3 style={{ color: isDark ? '#fff' : '#0F172A', fontSize: 18, fontWeight: 800, margin: '0 0 8px' }}>
+                            Feature Locked — Verification Required
+                        </h3>
+
+                        <p style={{ color: '#94A3B8', fontSize: 13, lineHeight: 1.6, margin: '0 0 22px' }}>
+                            Your dentist account is currently <strong>pending review</strong> by the SuperAdmin. 
+                            Clinical features (AI Analysis, Patients, Appointments, Reports, Tele-Health) are locked until your account is approved.
+                        </p>
+
+                        <div style={{ display: 'flex', gap: 10 }}>
+                            <motion.button
+                                onClick={() => { setLockModalOpen(false); navigate('/'); }}
+                                style={{
+                                    flex: 1, padding: '12px 0',
+                                    background: 'linear-gradient(135deg, #0D9488 0%, #0891B2 100%)',
+                                    color: '#fff', border: 'none', borderRadius: 10,
+                                    fontSize: 13, fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit'
+                                }}
+                                whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                            >
+                                ⬡ Go to Dashboard
+                            </motion.button>
+                            <button
+                                onClick={() => setLockModalOpen(false)}
+                                style={{
+                                    padding: '12px 18px',
+                                    background: isDark ? 'rgba(255,255,255,0.06)' : 'rgba(0,0,0,0.06)',
+                                    color: isDark ? '#94A3B8' : '#475569',
+                                    border: 'none', borderRadius: 10,
+                                    fontSize: 13, fontWeight: 600, cursor: 'pointer', fontFamily: 'inherit'
+                                }}
+                            >
+                                Close
+                            </button>
+                        </div>
+                    </motion.div>
+                </motion.div>
+            )}
+        </AnimatePresence>
+
         <PolicyModal isOpen={policyOpen} onClose={() => setPolicyOpen(false)} />
         </>
     );

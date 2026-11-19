@@ -9,6 +9,8 @@ import { PolicyModal, PolicyButton } from '../components/PoliciesModal';
 
 const GOOGLE_CLIENT_ID = "666475827485-d1ae76rj2sclgc02aj84gmc7rmlsba1v.apps.googleusercontent.com";
 
+const isValidEmail = (val) => /^[^\s@]+@[^\s@]+\.[a-zA-Z]{2,}$/.test(String(val).trim());
+
 export default function Login() {
     const [policyOpen, setPolicyOpen] = useState(false);
     const [tab, setTab]               = useState('login');
@@ -46,6 +48,7 @@ export default function Login() {
     const [googleEmail, setGoogleEmail]            = useState('');
     const [googleName, setGoogleName]              = useState('');
     const [googlePmc, setGooglePmc]                = useState('');
+    const [googlePhone, setGooglePhone]            = useState('');
     const googleBtnRef = useRef(null);
 
     useEffect(() => {
@@ -97,21 +100,24 @@ export default function Login() {
         }
     };
 
-    const handleGoogleRoleSelect = async (selectedRole) => {
+    const handleGoogleRoleSelect = (selectedRole) => {
+        setError('');
         if (selectedRole === 'patient') {
-            await finishGoogleSignup('patient', null);
+            setGoogleStep('patient_details');
         } else {
-            setGoogleStep('pmc');
+            setGoogleStep('dentist_details');
         }
     };
 
-    const finishGoogleSignup = async (selectedRole, pmc) => {
+    const finishGoogleSignup = async (selectedRole, pmc, phoneNum, customName) => {
         setLoading(true); setError(''); setSuccess('');
         try {
             const res = await API.post('/google-auth', {
                 credential: googleCredential,
                 role: selectedRole,
-                license_number: pmc,
+                license_number: pmc || null,
+                phone: phoneNum || null,
+                full_name: customName || googleName || null,
             });
             localStorage.setItem('token', res.data.token);
             localStorage.setItem('user', JSON.stringify(res.data.user));
@@ -122,14 +128,22 @@ export default function Login() {
         }
     };
 
-    const handleGooglePmcSubmit = () => {
+    const handleGoogleDentistSubmit = () => {
+        if (!googleName.trim()) { setError('Full Name is required'); return; }
         if (!googlePmc.trim()) { setError('PMC License number is required'); return; }
-        finishGoogleSignup('admin', googlePmc.trim());
+        if (!googlePhone.trim()) { setError('WhatsApp / Phone number is required'); return; }
+        finishGoogleSignup('admin', googlePmc.trim(), googlePhone.trim(), googleName.trim());
+    };
+
+    const handleGooglePatientSubmit = () => {
+        if (!googleName.trim()) { setError('Full Name is required'); return; }
+        if (!googlePhone.trim()) { setError('WhatsApp / Phone number is required'); return; }
+        finishGoogleSignup('patient', null, googlePhone.trim(), googleName.trim());
     };
 
     const resetGoogle = () => {
         setGoogleStep(false); setGoogleCredential(''); setGoogleEmail('');
-        setGoogleName(''); setGooglePmc('');
+        setGoogleName(''); setGooglePmc(''); setGooglePhone('');
         setError(''); setSuccess('');
     };
 
@@ -152,12 +166,24 @@ export default function Login() {
 
     const handleSendOTP = async () => {
         setLoading(true); setError(''); setSuccess('');
-        if (role === 'dentist' && !licenseNumber) {
+        if (!fullName.trim()) {
+            setError('Please enter your full name');
+            setLoading(false); return;
+        }
+        if (!phone.trim()) {
+            setError('Please enter your WhatsApp / Phone number');
+            setLoading(false); return;
+        }
+        if (role === 'dentist' && !licenseNumber.trim()) {
             setError('PMC License number is required for Dentists');
             setLoading(false); return;
         }
-        if (!fullName || !email || !password) {
-            setError('Please fill all fields');
+        if (!email.trim() || !password) {
+            setError('Please fill email and password');
+            setLoading(false); return;
+        }
+        if (!isValidEmail(email)) {
+            setError('Please enter a valid email address (e.g. name@example.com)');
             setLoading(false); return;
         }
         try {
@@ -168,7 +194,7 @@ export default function Login() {
                 password,
                 role:            backendRole,
                 license_number:  role === 'dentist' ? licenseNumber : null,
-                phone:           role === 'dentist' ? phone : null,
+                phone:           phone || null,
             });
             setOtpEmail(email);
             setOtpStep(true);
@@ -205,6 +231,7 @@ export default function Login() {
     // Step 1 — Email daalo, OTP bhejo
     const handleForgotSendOTP = async () => {
         if (!forgotEmail) { setError('Please enter your email'); return; }
+        if (!isValidEmail(forgotEmail)) { setError('Please enter a valid email address'); return; }
         setLoading(true); setError(''); setSuccess('');
         try {
             await API.post('/forgot-password', { email: forgotEmail });
@@ -458,41 +485,101 @@ export default function Login() {
                     </motion.div>
                 )}
 
-                {/* ══ GOOGLE: PMC DECLARATION STEP ══ */}
-                {googleStep === 'pmc' && (
+                {/* ══ GOOGLE: DENTIST DETAILS STEP (PMC, NAME, WHATSAPP) ══ */}
+                {(googleStep === 'dentist_details' || googleStep === 'pmc') && (
                     <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
                         <div style={{ textAlign: 'center', marginBottom: 20 }}>
                             <div style={{ fontSize: 40, marginBottom: 8 }}>🦷</div>
                             <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Dentist Verification</div>
-                            <div style={{ color: '#64748B', fontSize: 13 }}>Enter your PMC License Number to continue</div>
+                            <div style={{ color: '#64748B', fontSize: 13 }}>Please provide your Full Name, PMC License & WhatsApp Number</div>
                         </div>
 
                         <AnimatePresence>
                             {error && <motion.div style={errorStyle} initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>⚠️ {error}</motion.div>}
                         </AnimatePresence>
 
-                        <input style={iStyle} placeholder="PMC License Number (e.g. PMC-12345)"
-                            value={googlePmc} onChange={e => setGooglePmc(e.target.value)}
-                            onKeyPress={e => e.key === 'Enter' && handleGooglePmcSubmit()}
-                        />
+                        <div style={{ marginBottom: 4 }}>
+                            <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, display: 'block', marginBottom: 6, paddingLeft: 2 }}>FULL NAME</label>
+                            <input style={iStyle} placeholder="Full Name (e.g. Dr. Ahmad Khan)"
+                                value={googleName} onChange={e => setGoogleName(e.target.value)}
+                            />
+                        </div>
+
+                        <div style={{ marginBottom: 4 }}>
+                            <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, display: 'block', marginBottom: 6, paddingLeft: 2 }}>PMC LICENSE NUMBER</label>
+                            <input style={iStyle} placeholder="PMC License Number (e.g. PMC-12345)"
+                                value={googlePmc} onChange={e => setGooglePmc(e.target.value)}
+                            />
+                        </div>
+
+                        <div style={{ marginBottom: 4 }}>
+                            <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, display: 'block', marginBottom: 6, paddingLeft: 2 }}>WHATSAPP NUMBER</label>
+                            <input style={iStyle} placeholder="WhatsApp / Phone Number (e.g. 03001234567)"
+                                value={googlePhone} onChange={e => setGooglePhone(e.target.value)}
+                                onKeyPress={e => e.key === 'Enter' && handleGoogleDentistSubmit()}
+                            />
+                        </div>
 
                         <div style={{ background: 'rgba(239,68,68,0.06)', border: '1px solid rgba(239,68,68,0.2)', borderRadius: 12, padding: 14, marginBottom: 18, marginTop: 4 }}>
                             <div style={{ display: 'flex', gap: 8 }}>
                                 <span style={{ fontSize: 16 }}>⚠️</span>
                                 <div style={{ fontSize: 12, color: '#FCA5A5', lineHeight: 1.6 }}>
-                                    DeepSense does not independently verify PMC license numbers at signup. By continuing, you declare that this number is valid and was issued to you by the Pakistan Medical Commission. Practicing dentistry without a valid license is illegal. Your account will show as <strong>unverified</strong> until manually reviewed.
+                                    DeepSense does not independently verify PMC license numbers at signup. By continuing, you declare that this number is valid and was issued to you by the Pakistan Medical Commission. Practicing dentistry without a valid license is illegal. Your account will show as <strong>unverified</strong> until manually reviewed by SuperAdmin.
                                 </div>
                             </div>
                         </div>
 
                         <motion.button style={{ ...btnStyle(loading) }}
-                            onClick={handleGooglePmcSubmit} disabled={loading}
+                            onClick={handleGoogleDentistSubmit} disabled={loading}
                             whileHover={!loading ? { scale: 1.02, boxShadow: '0 12px 40px rgba(13,148,136,0.5)' } : {}}
                             whileTap={!loading ? { scale: 0.98 } : {}}
                         >
                             {loading
                                 ? <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 1, repeat: Infinity }}>⚡ Creating Account...</motion.span>
-                                : '✅ I Declare This Is Valid — Continue'
+                                : '✅ Complete Dentist Registration'
+                            }
+                        </motion.button>
+
+                        <button onClick={() => setGoogleStep('role')} style={backBtnStyle}>← Go Back</button>
+                    </motion.div>
+                )}
+
+                {/* ══ GOOGLE: PATIENT DETAILS STEP (NAME, WHATSAPP) ══ */}
+                {googleStep === 'patient_details' && (
+                    <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
+                        <div style={{ textAlign: 'center', marginBottom: 20 }}>
+                            <div style={{ fontSize: 40, marginBottom: 8 }}>🙋</div>
+                            <div style={{ color: '#fff', fontWeight: 700, fontSize: 16, marginBottom: 6 }}>Patient Details</div>
+                            <div style={{ color: '#64748B', fontSize: 13 }}>Please confirm your Full Name & WhatsApp Number</div>
+                        </div>
+
+                        <AnimatePresence>
+                            {error && <motion.div style={errorStyle} initial={{ opacity: 0, y: -8 }} animate={{ opacity: 1, y: 0 }} exit={{ opacity: 0 }}>⚠️ {error}</motion.div>}
+                        </AnimatePresence>
+
+                        <div style={{ marginBottom: 4 }}>
+                            <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, display: 'block', marginBottom: 6, paddingLeft: 2 }}>FULL NAME</label>
+                            <input style={iStyle} placeholder="Full Name"
+                                value={googleName} onChange={e => setGoogleName(e.target.value)}
+                            />
+                        </div>
+
+                        <div style={{ marginBottom: 16 }}>
+                            <label style={{ fontSize: 11, color: '#94A3B8', fontWeight: 600, display: 'block', marginBottom: 6, paddingLeft: 2 }}>WHATSAPP NUMBER</label>
+                            <input style={iStyle} placeholder="WhatsApp / Phone Number (e.g. 03001234567)"
+                                value={googlePhone} onChange={e => setGooglePhone(e.target.value)}
+                                onKeyPress={e => e.key === 'Enter' && handleGooglePatientSubmit()}
+                            />
+                        </div>
+
+                        <motion.button style={{ ...btnStyle(loading) }}
+                            onClick={handleGooglePatientSubmit} disabled={loading}
+                            whileHover={!loading ? { scale: 1.02, boxShadow: '0 12px 40px rgba(13,148,136,0.5)' } : {}}
+                            whileTap={!loading ? { scale: 0.98 } : {}}
+                        >
+                            {loading
+                                ? <motion.span animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 1, repeat: Infinity }}>⚡ Creating Account...</motion.span>
+                                : '✅ Complete Patient Registration'
                             }
                         </motion.button>
 
@@ -730,6 +817,14 @@ export default function Login() {
                                         value={licenseNumber}
                                         onChange={e => setLicense(e.target.value)}
                                     />
+                                </motion.div>
+                            )}
+                        </AnimatePresence>
+
+                        {/* WhatsApp Number — both dentist & patient */}
+                        <AnimatePresence>
+                            {tab === 'register' && (
+                                <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} exit={{ opacity: 0, height: 0 }}>
                                     <input style={iStyle}
                                         placeholder="WhatsApp / Phone Number (e.g. 03001234567)"
                                         value={phone}
@@ -739,8 +834,39 @@ export default function Login() {
                             )}
                         </AnimatePresence>
 
-                        <input style={iStyle} type="email" placeholder="Email address"
-                            value={email} onChange={e => setEmail(e.target.value)} />
+                        <div style={{ position: 'relative' }}>
+                            <input
+                                style={{
+                                    ...iStyle,
+                                    borderColor: tab === 'register' && email.length > 0
+                                        ? (isValidEmail(email) ? 'rgba(16,185,129,0.7)' : 'rgba(239,68,68,0.7)')
+                                        : undefined,
+                                    paddingRight: tab === 'register' && email.length > 0 ? 38 : undefined
+                                }}
+                                type="email"
+                                placeholder="Email address"
+                                value={email}
+                                onChange={e => setEmail(e.target.value)}
+                            />
+                            {tab === 'register' && email.length > 0 && (
+                                <span style={{
+                                    position: 'absolute', right: 12, top: 12,
+                                    fontSize: 14
+                                }}>
+                                    {isValidEmail(email) ? '✅' : '❌'}
+                                </span>
+                            )}
+                        </div>
+                        {tab === 'register' && email.length > 0 && !isValidEmail(email) && (
+                            <div style={{ color: '#F87171', fontSize: 11, marginTop: -8, marginBottom: 12, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span>⚠️</span> Please enter a valid email (e.g. name@example.com)
+                            </div>
+                        )}
+                        {tab === 'register' && email.length > 0 && isValidEmail(email) && (
+                            <div style={{ color: '#10B981', fontSize: 11, marginTop: -8, marginBottom: 12, paddingLeft: 4, display: 'flex', alignItems: 'center', gap: 4 }}>
+                                <span>✓</span> Valid email format
+                            </div>
+                        )}
                         <div style={{ position: 'relative' }}>
     <input style={{ ...iStyle, paddingRight: 44 }} 
         type={showPass ? 'text' : 'password'} 

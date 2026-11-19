@@ -334,13 +334,13 @@ export default function PaymentAdmin() {
                         />
                         <StatCard
                             icon="💎"
-                            label="Lifetime Access Sold"
+                            label="One-Time (Single Session)"
                             value={stats.lifetime_count || 0}
                             color="#0D9488"
                         />
                         <StatCard
                             icon="⚡"
-                            label="Monthly Pro Active"
+                            label="Monthly Pro (30 Days)"
                             value={stats.monthly_count || 0}
                             color="#7C3AED"
                         />
@@ -478,10 +478,13 @@ export default function PaymentAdmin() {
                                 {/* Plan & Price */}
                                 <div>
                                     <div style={{ color: '#10B981', fontWeight: 800, fontSize: 13 }}>
-                                        {r.plan_type === 'monthly' ? 'Monthly Pro' : 'Lifetime Access'}
+                                        {r.plan_type === 'monthly' ? 'Monthly Pro' : 'One Time'}
                                     </div>
                                     <div style={{ color: '#fff', fontWeight: 900, fontSize: 15, marginTop: 2 }}>
                                         PKR {r.amount ? r.amount.toLocaleString() : (r.plan_type === 'monthly' ? '2,499' : '999')}
+                                    </div>
+                                    <div style={{ color: '#94A3B8', fontSize: 11, marginTop: 3, fontWeight: 600 }}>
+                                        {r.plan_type === 'monthly' ? '📅 30 Days (1 Month)' : '⚡ Expires after use (1 Call)'}
                                     </div>
                                 </div>
 
@@ -533,7 +536,8 @@ export default function PaymentAdmin() {
                                         display: 'inline-block', textTransform: 'capitalize'
                                     }}>
                                         {r.status === 'active' ? '✅ Active' :
-                                         r.status === 'pending' ? '⏳ Pending Review' : '❌ ' + r.status}
+                                         r.status === 'pending' ? '⏳ Pending Review' :
+                                         r.status === 'used' ? '🔘 Session Used' : '❌ ' + r.status}
                                     </span>
                                 </div>
 
@@ -569,7 +573,13 @@ export default function PaymentAdmin() {
                                         </>
                                     ) : r.status === 'active' ? (
                                         <div style={{ color: '#10B981', fontSize: 12, fontWeight: 700 }}>
-                                            {r.expires_at ? `Exp: ${new Date(r.expires_at).toLocaleDateString()}` : 'Lifetime Access'}
+                                            {r.plan_type === 'monthly'
+                                                ? (r.expires_at ? `Exp: ${new Date(r.expires_at).toLocaleDateString()} (1 Month)` : '30 Days Validity')
+                                                : '⚡ Expires after use (1 Call)'}
+                                        </div>
+                                    ) : r.status === 'used' ? (
+                                        <div style={{ color: '#94A3B8', fontSize: 11, fontWeight: 600 }}>
+                                            Session Used / Expired
                                         </div>
                                     ) : (
                                         <span style={{ color: '#64748B', fontSize: 12 }}>—</span>

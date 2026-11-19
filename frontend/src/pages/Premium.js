@@ -7,11 +7,11 @@ import { useTheme } from '../context/ThemeContext';
 export default function Premium() {
     const { isDark } = useTheme();
     const [user] = useState(JSON.parse(localStorage.getItem('user') || '{}'));
-    
+
     // Status state
     const [subStatus, setSubStatus] = useState(null);
     const [loading, setLoading] = useState(true);
-    
+
     // Purchase form state
     const [selectedPlan, setSelectedPlan] = useState('one_time'); // 'one_time' or 'monthly'
     const [paymentMethod, setPaymentMethod] = useState('easypaisa'); // 'easypaisa' or 'meezan'
@@ -79,10 +79,10 @@ export default function Premium() {
     // WhatsApp & Email support links (HIPAA Compliant - No personal data/email leaked)
     const supportPhone = "923095367405"; // Admin contact for WhatsApp verification
     const currentRef = subStatus?.payment_id ? subStatus.payment_id : referenceNumber;
-    const planName = selectedPlan === 'one_time' ? 'Lifetime Access (PKR 999)' : 'Monthly Pro (PKR 2,499)';
+    const planName = selectedPlan === 'one_time' ? 'One Time (PKR 999)' : 'Monthly Pro (PKR 2,499)';
     const amountVal = selectedPlan === 'one_time' ? '999' : '2499';
     const patientUid = user?.id ? `PID-${user.id.slice(0, 8).toUpperCase()}` : 'PID-PATIENT';
-    
+
     const waMessage = encodeURIComponent(
         `Hi DeepSense Team!\nI have made payment for Premium Membership.\n\n🆔 Patient ID: ${patientUid}\n💳 Plan: ${planName}\n💰 Amount: PKR ${amountVal}\n🔖 Reference: ${currentRef}\n🔢 Transaction ID: ${transactionId || (subStatus?.payment_id || '')}\n\nHere is my payment screenshot:`
     );
@@ -101,9 +101,9 @@ export default function Premium() {
             <Navbar />
 
             <div style={{ maxWidth: 1100, margin: '0 auto', padding: '100px 24px 40px' }}>
-                
+
                 {/* Header Section */}
-                <motion.div 
+                <motion.div
                     initial={{ opacity: 0, y: -20 }}
                     animate={{ opacity: 1, y: 0 }}
                     style={{ textAlign: 'center', marginBottom: 40 }}
@@ -118,7 +118,7 @@ export default function Premium() {
                     </div>
                     <h1 style={{
                         fontSize: 'clamp(28px, 4vw, 42px)', fontWeight: 800, margin: 0,
-                        background: isDark 
+                        background: isDark
                             ? 'linear-gradient(135deg, #FFFFFF 0%, #14B8A6 100%)'
                             : 'linear-gradient(135deg, #0F172A 0%, #0D9488 100%)',
                         WebkitBackgroundClip: 'text',
@@ -130,7 +130,7 @@ export default function Premium() {
                         color: isDark ? '#94A3B8' : '#64748B', fontSize: 16,
                         maxWidth: 620, margin: '14px auto 0', lineHeight: 1.6
                     }}>
-                        Enjoy unlimited AI X-ray pathology detections, clinical insights, smart chat assistant, and priority telehealth consultations.
+                        Get priority access to verified dentists, unlimited HD Tele-Health video consultations, and instant online appointments.
                     </p>
                 </motion.div>
 
@@ -161,32 +161,38 @@ export default function Premium() {
                             display: 'flex', alignItems: 'center', justifyContent: 'center',
                             fontSize: 36, margin: '0 auto 20px'
                         }}>✨</div>
-                        
+
                         <h2 style={{ fontSize: 26, fontWeight: 800, margin: '0 0 8px', color: '#10B981' }}>
                             {subStatus?.is_dentist ? '👨‍⚕️ Dentist Access Active!' : 'You are a Premium Member!'}
                         </h2>
                         <p style={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: 15, margin: '0 0 24px' }}>
                             {subStatus?.is_dentist
                                 ? 'As a registered dentist, you have unlimited 100% free access to all DeepSense features, Telehealth video calls, and AI analysis.'
-                                : 'Your account has full access to all DeepSense AI features and priority services.'}
+                                : 'Your account has full priority access to Tele-Health video consultations, online doctor appointments, and priority dental support.'}
                         </p>
 
                         <div style={{
                             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))',
                             gap: 16, background: isDark ? 'rgba(255,255,255,0.03)' : '#F8FAFC',
-                            padding: 20, borderRadius: 16, textAlign: 'left', marginBottom: 24,
+                            padding: 20, borderRadius: 16, textAlign: 'left',
                             border: isDark ? '1px solid rgba(255,255,255,0.06)' : '1px solid #E2E8F0'
                         }}>
                             <div>
                                 <div style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Plan Type</div>
                                 <div style={{ fontSize: 16, fontWeight: 700, color: '#14B8A6', marginTop: 4 }}>
-                                    {subStatus.plan_type === 'monthly' ? 'Monthly Pro' : 'Lifetime Access'}
+                                    {subStatus.is_dentist
+                                        ? 'Dentist Access'
+                                        : (subStatus.plan_type === 'monthly' ? 'Monthly Pro (30 Days)' : 'One Time (Single Session)')}
                                 </div>
                             </div>
                             <div>
                                 <div style={{ fontSize: 11, color: '#64748B', textTransform: 'uppercase', fontWeight: 700 }}>Valid Until</div>
-                                <div style={{ fontSize: 16, fontWeight: 700, color: isDark ? '#fff' : '#0F172A', marginTop: 4 }}>
-                                    {subStatus.expires_at ? new Date(subStatus.expires_at).toLocaleDateString() : 'Lifetime Access'}
+                                <div style={{ fontSize: 13, fontWeight: 700, color: isDark ? '#fff' : '#0F172A', marginTop: 4 }}>
+                                    {subStatus.is_dentist
+                                        ? 'Lifetime Free Access'
+                                        : subStatus.plan_type === 'monthly'
+                                            ? (subStatus.expires_at ? `${new Date(subStatus.expires_at).toLocaleDateString()} (1 Month)` : '30 Days Validity')
+                                            : 'Expires immediately after use (1 Call)'}
                                 </div>
                             </div>
                             <div>
@@ -195,22 +201,6 @@ export default function Premium() {
                                     Active ✅
                                 </div>
                             </div>
-                        </div>
-
-                        <div style={{ display: 'flex', gap: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-                            <a href="/analysis" style={{
-                                textDecoration: 'none', background: 'linear-gradient(135deg, #0D9488, #0891B2)',
-                                color: '#fff', padding: '12px 28px', borderRadius: 12, fontWeight: 700, fontSize: 14
-                            }}>
-                                ◈ Start AI Analysis
-                            </a>
-                            <a href="/chat" style={{
-                                textDecoration: 'none', background: 'rgba(124,58,237,0.15)',
-                                border: '1px solid rgba(124,58,237,0.3)', color: '#A78BFA',
-                                padding: '12px 28px', borderRadius: 12, fontWeight: 700, fontSize: 14
-                            }}>
-                                🤖 AI Clinical Assistant
-                            </a>
                         </div>
                     </motion.div>
                 )}
@@ -250,7 +240,7 @@ export default function Premium() {
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
                                 <span style={{ color: '#64748B', fontSize: 13 }}>Plan Requested:</span>
                                 <span style={{ fontWeight: 700, color: '#14B8A6' }}>
-                                    {subStatus.plan_type === 'monthly' ? 'Monthly Pro (PKR 2,499)' : 'Lifetime Access (PKR 999)'}
+                                    {subStatus.plan_type === 'monthly' ? 'Monthly Pro (30 Days Validity · PKR 2,499)' : 'One Time (Single Session · Expires after use · PKR 999)'}
                                 </span>
                             </div>
                             <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: 12 }}>
@@ -324,7 +314,7 @@ export default function Premium() {
                             display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))',
                             gap: 24, marginBottom: 48
                         }}>
-                            {/* Card 1: Lifetime Access */}
+                            {/* Card 1: One Time Plan */}
                             <motion.div
                                 whileHover={{ y: -6 }}
                                 transition={{ duration: 0.2 }}
@@ -347,33 +337,33 @@ export default function Premium() {
                                 </div>
 
                                 <div style={{ fontSize: 28, marginBottom: 12 }}>💎</div>
-                                <h3 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 6px' }}>Lifetime Access</h3>
+                                <h3 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 6px' }}>One Time</h3>
                                 <p style={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: 13, margin: '0 0 20px' }}>
-                                    One-time payment, unlimited lifetime access with no renewals.
+                                    Single consultation pass · Expires immediately after call/use.
                                 </p>
 
                                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 24 }}>
                                     <span style={{ fontSize: 36, fontWeight: 900, color: '#14B8A6' }}>PKR 999</span>
-                                    <span style={{ fontSize: 13, color: '#64748B' }}>/ lifetime</span>
+                                    <span style={{ fontSize: 13, color: '#64748B' }}>/ single session</span>
                                 </div>
 
                                 <div style={{ height: 1, background: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0', marginBottom: 20 }} />
 
                                 <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 28px', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 12 }}>
                                     <li style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{ color: '#10B981' }}>✓</span> Unlimited AI X-Ray Analysis
+                                        <span style={{ color: '#10B981' }}>✓</span> 1 Tele-Health Video Consultation
                                     </li>
                                     <li style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{ color: '#10B981' }}>✓</span> DeepSense V2 Pathology Detection
+                                        <span style={{ color: '#10B981' }}>✓</span> <strong>Expires immediately after use</strong>
                                     </li>
                                     <li style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{ color: '#10B981' }}>✓</span> Claude AI Clinical Assistant
+                                        <span style={{ color: '#10B981' }}>✓</span> Direct Online Doctor Video Room Access
                                     </li>
                                     <li style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{ color: '#10B981' }}>✓</span> PDF Clinical Reports Export
+                                        <span style={{ color: '#10B981' }}>✓</span> Digital Prescription & Dental Advice
                                     </li>
                                     <li style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{ color: '#10B981' }}>✓</span> Lifetime Feature Updates
+                                        <span style={{ color: '#10B981' }}>✓</span> Single-Use Pass (Re-buy for next session)
                                     </li>
                                 </ul>
 
@@ -406,31 +396,31 @@ export default function Premium() {
                                 <div style={{ fontSize: 28, marginBottom: 12 }}>⚡</div>
                                 <h3 style={{ fontSize: 22, fontWeight: 800, margin: '0 0 6px' }}>Monthly Pro</h3>
                                 <p style={{ color: isDark ? '#94A3B8' : '#64748B', fontSize: 13, margin: '0 0 20px' }}>
-                                    Comprehensive clinical plan with 30 days recurring validity.
+                                    Comprehensive care plan · 30 Days Full Validity (1 Month).
                                 </p>
 
                                 <div style={{ display: 'flex', alignItems: 'baseline', gap: 6, marginBottom: 24 }}>
                                     <span style={{ fontSize: 36, fontWeight: 900, color: '#A78BFA' }}>PKR 2,499</span>
-                                    <span style={{ fontSize: 13, color: '#64748B' }}>/ 30 days</span>
+                                    <span style={{ fontSize: 13, color: '#64748B' }}>/ 30 days (1 Month)</span>
                                 </div>
 
                                 <div style={{ height: 1, background: isDark ? 'rgba(255,255,255,0.08)' : '#E2E8F0', marginBottom: 20 }} />
 
                                 <ul style={{ listStyle: 'none', padding: 0, margin: '0 0 28px', fontSize: 13, display: 'flex', flexDirection: 'column', gap: 12 }}>
                                     <li style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{ color: '#10B981' }}>✓</span> Everything in Lifetime Plan
+                                        <span style={{ color: '#10B981' }}>✓</span> <strong>Full 30 Days Validity (1 Month)</strong>
                                     </li>
                                     <li style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{ color: '#10B981' }}>✓</span> High-Resolution Deep CNN Insights
+                                        <span style={{ color: '#10B981' }}>✓</span> Unlimited HD Video Consultations for 30 Days
                                     </li>
                                     <li style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{ color: '#10B981' }}>✓</span> Tele-Health Priority Room Access
+                                        <span style={{ color: '#10B981' }}>✓</span> Priority Queue for Doctor Appointments
                                     </li>
                                     <li style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{ color: '#10B981' }}>✓</span> Dedicated 24/7 Support Channel
+                                        <span style={{ color: '#10B981' }}>✓</span> Direct Doctor Messaging & Follow-ups
                                     </li>
                                     <li style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-                                        <span style={{ color: '#10B981' }}>✓</span> Multi-Patient Clinical Archives
+                                        <span style={{ color: '#10B981' }}>✓</span> 24/7 Dedicated Dental Support
                                     </li>
                                 </ul>
 
